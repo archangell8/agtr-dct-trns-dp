@@ -1,0 +1,425 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH
+/* PONTO DE COLETA ATÉ BP DE ENTREGA VIA ROD */
+ORIGEM_ARMAZEM AS (
+    SELECT DISTINCT
+        SC.SOURCE,
+        SC.DELIVERYUNITID AS BP_ENTREGA,
+        SC.TRANSMODE
+    FROM {{ ref('sourcing_contract_details_master') }} AS SC
+    WHERE
+        1 = 1
+        AND SC.TRANSMODE = 'ROD'
+),
+
+/* PONTO DE COLETA ATÉ DESTINO FINAL VIA RODO */
+SOURCE_CIF_DESTINO_RODO AS (
+    SELECT DISTINCT
+        SC.SOURCE,
+        SC.DESTINATION,
+        SC.TRANSMODE
+    FROM {{ ref('sourcing_contract_details_master') }} AS SC
+    WHERE
+        1 = 1
+        AND SC.TRANSMODE = 'ROD'
+),
+
+/* PONTO DE COLETA ATÉ O TRANSBORDO */
+SOURCE_CIF_DESTINO_MODAL AS (
+    SELECT DISTINCT
+        SC.SOURCE,
+        SC.TRANSMODE AS DESTINO,
+        'ROD' AS TRANSMODE
+    FROM {{ ref('sourcing_contract_details_master') }} AS SC
+    WHERE
+        1 = 1
+        AND SC.TRANSMODE != 'ROD'
+),
+
+/* PONTO DE COLETA ATÉ A BP DE COMPRA VIA RODO */
+SOURCE_CIF_BP_COMPRA AS (
+    SELECT DISTINCT
+        SC.SOURCE,
+        L.LOCATION_UNIT_ID,
+        'ROD' AS TRANSMODE
+    FROM {{ ref('sourcing_contract_details_master') }} AS SC
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS L
+        ON SC.ORIGINATION = L.LOCATIONID
+),
+
+LANE_BASE AS (
+    /* PONTO DE COLETA ATÉ DESTINO FINAL VIA RODO */
+    SELECT
+        CONCAT(
+            L.LOCATIONID,
+            '-',
+            LD.LOCATIONID,
+            '-',
+            SOURCE_CIF_DESTINO_RODO.TRANSMODE
+        ) AS LANEID,
+        L.LOCATIONID AS LOCATION_FROM,
+        LD.LOCATIONID AS LOCATION_TO,
+        SOURCE_CIF_DESTINO_RODO.TRANSMODE,
+        CONCAT(
+            L.LOCATION_NAME,
+            '-',
+            LD.LOCATION_NAME,
+            '-',
+            SOURCE_CIF_DESTINO_RODO.TRANSMODE
+        ) AS LANE_DESCRIPTION,
+        L.LOCATION_UNIT_STRUCTURE AS LOCATION_FROM_UNIT_STRUCTURE,
+        LD.LOCATION_UNIT_STRUCTURE AS LOCATION_TO_UNIT_STRUCTURE,
+        'Q1' AS QUERY
+    FROM SOURCE_CIF_DESTINO_RODO
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            SOURCE_CIF_DESTINO_RODO.SOURCE = L.LOCATIONID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'PONTO DE COLETA',
+                'CLIENTE OUTBOUND'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            SOURCE_CIF_DESTINO_RODO.DESTINATION = LD.LOCATION_CODE
+            AND LD.LOCATION_UNIT_STRUCTURE IN (
+                'PORTO MARÍTIMO',
+                'FÁBRICA'
+            )
+
+    UNION DISTINCT
+
+    /* PONTO DE COLETA ATÉ O TRANSBORDO */
+    SELECT
+        CONCAT(
+            L.LOCATIONID,
+            '-',
+            LD.LOCATIONID,
+            '-',
+            SOURCE_CIF_DESTINO_MODAL.TRANSMODE
+        ) AS LANEID,
+        L.LOCATIONID AS LOCATION_FROM,
+        LD.LOCATIONID AS LOCATION_TO,
+        SOURCE_CIF_DESTINO_MODAL.TRANSMODE,
+        CONCAT(
+            L.LOCATION_NAME,
+            '-',
+            LD.LOCATION_NAME,
+            '-',
+            SOURCE_CIF_DESTINO_MODAL.TRANSMODE
+        ) AS LANE_DESCRIPTION,
+        L.LOCATION_UNIT_STRUCTURE AS LOCATION_FROM_UNIT_STRUCTURE,
+        LD.LOCATION_UNIT_STRUCTURE AS LOCATION_TO_UNIT_STRUCTURE,
+        'Q2' AS QUERY
+    FROM SOURCE_CIF_DESTINO_MODAL
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            SOURCE_CIF_DESTINO_MODAL.SOURCE = L.LOCATIONID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'PONTO DE COLETA',
+                'CLIENTE OUTBOUND'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            SOURCE_CIF_DESTINO_MODAL.DESTINO = LD.LOCATION_CODE
+            AND LD.LOCATION_UNIT_STRUCTURE IN (
+                'TRANSBORDO',
+                'PORTO FLUVIAL'
+            )
+
+    UNION DISTINCT
+
+    /* PONTO DE COLETA ATÉ A BP DE COMPRA VIA RODO */
+    SELECT
+        CONCAT(
+            L.LOCATIONID,
+            '-',
+            LD.LOCATIONID,
+            '-',
+            SOURCE_CIF_BP_COMPRA.TRANSMODE
+        ) AS LANEID,
+        L.LOCATIONID AS LOCATION_FROM,
+        LD.LOCATIONID AS LOCATION_TO,
+        'ROD' AS TRANSMODE,
+        CONCAT(
+            L.LOCATION_NAME,
+            '-',
+            LD.LOCATION_NAME,
+            '-',
+            'ROD'
+        ) AS LANE_DESCRIPTION,
+        L.LOCATION_UNIT_STRUCTURE AS LOCATION_FROM_UNIT_STRUCTURE,
+        LD.LOCATION_UNIT_STRUCTURE AS LOCATION_TO_UNIT_STRUCTURE,
+        'Q3' AS QUERY
+    FROM SOURCE_CIF_BP_COMPRA
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            SOURCE_CIF_BP_COMPRA.SOURCE = L.LOCATIONID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'PONTO DE COLETA',
+                'CLIENTE OUTBOUND'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            SOURCE_CIF_BP_COMPRA.LOCATION_UNIT_ID = LD.LOCATIONID
+            AND LD.LOCATION_UNIT_STRUCTURE IN (
+                'ARMAZÉM',
+                'ESCRITÓRIO'
+            )
+
+    UNION DISTINCT
+
+    /* PONTO DE COLATA ATÉ BP DE ENTREGA */
+    SELECT
+        CONCAT(
+            L.LOCATIONID,
+            '-',
+            LD.LOCATIONID,
+            '-',
+            ORIGEM_ARMAZEM.TRANSMODE
+        ) AS LANEID,
+        L.LOCATIONID AS LOCATION_FROM,
+        LD.LOCATIONID AS LOCATION_TO,
+        ORIGEM_ARMAZEM.TRANSMODE,
+        CONCAT(
+            L.LOCATION_NAME,
+            '-',
+            LD.LOCATION_NAME,
+            '-',
+            ORIGEM_ARMAZEM.TRANSMODE
+        ) AS LANE_DESCRIPTION,
+        L.LOCATION_UNIT_STRUCTURE AS LOCATION_FROM_UNIT_STRUCTURE,
+        LD.LOCATION_UNIT_STRUCTURE AS LOCATION_TO_UNIT_STRUCTURE,
+        'Q4' AS QUERY
+    FROM ORIGEM_ARMAZEM
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            ORIGEM_ARMAZEM.SOURCE = L.LOCATIONID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'PONTO DE COLETA',
+                'CLIENTE OUTBOUND'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            ORIGEM_ARMAZEM.BP_ENTREGA = LD.LOCATIONID
+            AND LD.LOCATION_UNIT_STRUCTURE IN (
+                'ARMAZÉM',
+                'ESCRITÓRIO',
+                'FÁBRICA'
+            )
+),
+
+LANE_ITEMLANETRANSMODE AS (
+    SELECT DISTINCT
+        S.BODLANEID AS LANEID,
+        S.TRANSMODE,
+        LOC1.LOCATION_UNIT_STRUCTURE AS LOCATION_FROM_UNIT_STRUCTURE,
+        LOC2.LOCATION_UNIT_STRUCTURE AS LOCATION_TO_UNIT_STRUCTURE,
+        S.ISLANE_OPTIMIZABLE,
+        LEFT(S.BODLANEID, (POSITION('-', S.BODLANEID) - 1)) AS LOCATION_FROM,
+        SUBSTR(
+            S.BODLANEID,
+            POSITION('-', S.BODLANEID) + 1,
+            REGEXP_INSTR(S.BODLANEID, '-', 1, 2)
+            - POSITION('-', S.BODLANEID) - 1
+        ) AS LOCATION_TO,
+        CONCAT(LOC1.LOCATION_NAME, '-', LOC2.LOCATION_NAME, '-', S.TRANSMODE)
+            AS LANE_DESCRIPTION
+    FROM {{ ref('vw_itemlanetransmode_stg') }} AS S
+    INNER JOIN {{ ref('location_master') }} AS LOC1
+        ON
+            LEFT(S.BODLANEID, (POSITION('-', S.BODLANEID) - 1))
+            = LOC1.LOCATIONID
+    INNER JOIN {{ ref('location_master') }} AS LOC2
+        ON SUBSTR(
+            S.BODLANEID,
+            POSITION('-', S.BODLANEID) + 1,
+            REGEXP_INSTR(S.BODLANEID, '-', 1, 2)
+            - POSITION('-', S.BODLANEID) - 1
+        ) = LOC2.LOCATIONID
+),
+
+LANE_STG AS (
+    SELECT DISTINCT
+        COALESCE(NULLIF(LANEID, ''), 'N/A') AS LANEID,
+        COALESCE(NULLIF(LOCATION_FROM, ''), 'N/A') AS LOCATION_FROM,
+        COALESCE(NULLIF(LOCATION_TO, ''), 'N/A') AS LOCATION_TO,
+        COALESCE(NULLIF(TRANSMODE, ''), 'N/A') AS TRANSMODE,
+        COALESCE(NULLIF(LANE_DESCRIPTION, ''), 'N/A') AS LANE_DESCRIPTION,
+        COALESCE(NULLIF(LOCATION_FROM_UNIT_STRUCTURE, ''), 'N/A')
+            AS LOCATION_FROM_UNIT_STRUCTURE,
+        COALESCE(NULLIF(LOCATION_TO_UNIT_STRUCTURE, ''), 'N/A')
+            AS LOCATION_TO_UNIT_STRUCTURE
+    FROM LANE_BASE
+    WHERE LANEID IS NOT NULL AND LANEID NOT LIKE '%N/A%'
+
+    UNION DISTINCT
+
+    SELECT DISTINCT
+        COALESCE(NULLIF(LANEID, ''), 'N/A') AS LANEID,
+        COALESCE(NULLIF(LOCATION_FROM, ''), 'N/A') AS LOCATION_FROM,
+        COALESCE(NULLIF(LOCATION_TO, ''), 'N/A') AS LOCATION_TO,
+        COALESCE(NULLIF(TRANSMODE, ''), 'N/A') AS TRANSMODE,
+        COALESCE(NULLIF(LANE_DESCRIPTION, ''), 'N/A') AS LANE_DESCRIPTION,
+        COALESCE(NULLIF(LOCATION_FROM_UNIT_STRUCTURE, ''), 'N/A')
+            AS LOCATION_FROM_UNIT_STRUCTURE,
+        COALESCE(NULLIF(LOCATION_TO_UNIT_STRUCTURE, ''), 'N/A')
+            AS LOCATION_TO_UNIT_STRUCTURE
+    FROM LANE_ITEMLANETRANSMODE
+    WHERE LANEID IS NOT NULL
+),
+
+UDC_ITEMLANETRANSMODE AS (
+    SELECT
+        TRIM(UDC.DESCRIPTION) AS "DESCRIPTION",
+        CONCAT(LOCS.LOCATIONID, '-', LD.LOCATIONID, '-', 'ROD') AS LANEID
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }} AS UDC
+    INNER JOIN {{ ref('location_master') }} AS LOCS
+        ON
+            UDC.SOURCE_CODE = LOCS.LOCATION_IBP_ASSET
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            UDC.TARGET_CODE = LD.LOCATION_IBP_ASSET
+    WHERE
+        1 = 1
+        AND UDC.CATEGORY = 'LANE'
+        AND UDC.STAGE = 'ITEM_LANE_TRANSMODE'
+        AND UDC.STATUS = 'ATIVO'
+),
+
+LANES_NON_OPTIMIZABLE AS (
+    SELECT DISTINCT LANE.LANEID
+    FROM LANE_STG AS LANE
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS LF
+        ON
+            LANE.LOCATION_FROM = LF.LOCATION_UNIT_ID
+            AND LF.ISACTIVE = 'TRUE'
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS LT
+        ON
+            LANE.LOCATION_TO = LT.LOCATION_UNIT_ID
+            AND LF.ISACTIVE = 'TRUE'
+    WHERE
+        1 = 1
+        AND LF.LOCATION_UNIT_STRUCTURE IN ('ARMAZÉM')
+        AND LT.LOCATION_UNIT_STRUCTURE IN (
+            'ARMAZÉM', 'FÁBRICA', 'MERCADO INTERNO'
+        )
+        AND SUBSTR(LF.LOCATIONID, 1, 5) != SUBSTR(LT.LOCATIONID, 1, 5)
+        AND NOT EXISTS (
+            SELECT 1
+            FROM {{ ref('tab_location_internal_stg') }} AS LI
+            WHERE
+                SUBSTR(LI.LOCATIONID, 1, 5) = SUBSTR(LF.LOCATIONID, 1, 5)
+                AND LI.LOCATION_UNIT_ID = LT.LOCATION_UNIT_ID
+        )
+),
+
+VALID_FARMS AS (
+    SELECT DISTINCT SC.SOURCE
+    FROM {{ ref('sourcing_contract_details_master') }} AS SC
+    WHERE
+        1 = 1
+        --AND SC.TORECEIVETOTAL > 0
+
+    UNION ALL
+
+    SELECT DISTINCT UDC.SOURCE_CODE
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }} AS UDC
+    WHERE
+        1 = 1
+        AND UDC.CATEGORY = 'LANE'
+        AND UDC.STAGE = 'REATIVAR'
+        AND UDC.STATUS = 'ATIVO'
+),
+
+UDC_ISLANEOPT AS (
+    SELECT
+        UDC.SOURCE_CODE AS LOCATION_FROM,
+        UDC.TARGET_CODE AS LOCATION_TO,
+        UDC.DESCRIPTION AS ISLANE_OPTIMIZABLE
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }} AS UDC
+    WHERE
+        1 = 1
+        AND UDC.CATEGORY = 'LANE'
+        AND UDC.STAGE = 'IS_OPTMIZABLE_TRUE_ID_ID'
+        AND UDC.STATUS = 'ATIVO'
+
+    UNION ALL
+
+    SELECT
+        UDC.SOURCE_CODE AS LOCATION_FROM,
+        LOC.LOCATIONID AS LOCATION_TO,
+        UDC.DESCRIPTION AS ISLANE_OPTIMIZABLE
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }} AS UDC
+    INNER JOIN {{ ref('location_master') }} AS LOC
+        ON UDC.TARGET_CODE = LOC.LOCATION_CODE
+    WHERE
+        1 = 1
+        AND UDC.CATEGORY = 'LANE'
+        AND UDC.STAGE IN (
+            'IS_OPTMIZABLE_TRUE_ID_CODE', 'IS_OPTMIZABLE_FALSE_ID_CODE'
+        )
+        AND UDC.STATUS = 'ATIVO'
+),
+
+LANE_FINAL AS (
+    SELECT
+        LANE.LANEID,
+        LANE.LOCATION_FROM,
+        LANE.LOCATION_TO,
+        LANE.TRANSMODE,
+        LANE.LANE_DESCRIPTION,
+        LANE.LOCATION_FROM_UNIT_STRUCTURE,
+        LANE.LOCATION_TO_UNIT_STRUCTURE,
+        COALESCE(
+            UDC_OPT.ISLANE_OPTIMIZABLE,
+            CASE
+                WHEN
+                    NON_OPT.LANEID IS NOT NULL
+                    OR (
+                        LF.LOCATION_UNIT_STRUCTURE = 'ARMAZÉM'
+                        AND LT.LOCATION_UNIT_STRUCTURE = 'FÁBRICA'
+                        AND LF.STATE != LT.STATE
+                    )
+                    THEN 'FALSE'
+            END,
+            LANE_TRANS.ISLANE_OPTIMIZABLE,
+            IFF(UDC.DESCRIPTION = 'VIRTUAL', 'FALSE', 'TRUE'),
+            'FALSE'
+        ) AS ISLANE_OPTIMIZABLE
+    FROM LANE_STG AS LANE
+    LEFT JOIN UDC_ITEMLANETRANSMODE AS UDC
+        ON LANE.LANEID = UDC.LANEID
+    LEFT JOIN LANE_ITEMLANETRANSMODE AS LANE_TRANS
+        ON
+            LANE.LANEID = LANE_TRANS.LANEID
+            AND LANE_TRANS.ISLANE_OPTIMIZABLE IS NOT NULL
+    INNER JOIN {{ ref('location_master') }} AS LF
+        ON LANE.LOCATION_FROM = LF.LOCATIONID
+    INNER JOIN {{ ref('location_master') }} AS LT
+        ON LANE.LOCATION_TO = LT.LOCATIONID
+    LEFT JOIN LANES_NON_OPTIMIZABLE AS NON_OPT
+        ON LANE.LANEID = NON_OPT.LANEID
+    LEFT JOIN VALID_FARMS AS VF
+        ON LANE.LOCATION_FROM = VF.SOURCE
+    LEFT JOIN UDC_ISLANEOPT AS UDC_OPT
+        ON
+            LANE.LOCATION_FROM = UDC_OPT.LOCATION_FROM
+            AND LANE.LOCATION_TO = UDC_OPT.LOCATION_TO
+    WHERE
+        1 = 1
+        AND NOT (
+            LANE.LOCATION_FROM_UNIT_STRUCTURE = 'PONTO DE COLETA'
+            AND VF.SOURCE IS NULL
+        )
+)
+
+SELECT DISTINCT
+    *,
+    HASH(*) AS HASH_ID
+FROM LANE_FINAL

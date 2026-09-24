@@ -1,0 +1,10 @@
+structure:
+  fct_model_naming_conventions:
+    +enabled: false
+  fct_source_directories:
+    +enabled: false
+  fct_model_directories:
+    +enabled: false
+documentation:
+  fct_documentation_coverage:
+    +enabled: false

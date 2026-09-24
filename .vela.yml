@@ -1,0 +1,380 @@
+version: "1"
+
+# *** ENVS ***
+environment:
+  IMAGE_TAG: 5.0.0-stable
+secrets:
+    - name: ASTRO_TOKEN
+      key: Minerva/pipeline/ASTRO_INFRA
+      type: shared
+      engine: native
+    - name: ASTRO_ORG
+      key: Minerva/pipeline/ASTRO_ORGANIZATION_ID
+      type: shared
+      engine: native
+    - name: CLUSTER_ID
+      key: Minerva/pipeline/CLUSTER_ID
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_SCOPE_DEV
+      key: Minerva/pipeline/SNOWFLAKE_SCOPE_DEV
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_CLIENT_SECRET_DEV
+      key: Minerva/pipeline/SNOWFLAKE_CLIENT_SECRET_DEV
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_CLIENT_ID_DEV
+      key: Minerva/pipeline/SNOWFLAKE_CLIENT_ID_DEV
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_USER_DEV
+      key: Minerva/pipeline/SNOWFLAKE_USER_DEV
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_SCOPE_PROD
+      key: Minerva/pipeline/SNOWFLAKE_SCOPE_PROD
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_CLIENT_SECRET_PROD
+      key: Minerva/pipeline/SNOWFLAKE_CLIENT_SECRET_PROD
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_CLIENT_ID_PROD
+      key: Minerva/pipeline/SNOWFLAKE_CLIENT_ID_PROD
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_USER_PROD
+      key: Minerva/pipeline/SNOWFLAKE_USER_PROD
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_TOKEN_URL_PROD
+      key: Minerva/pipeline/SNOWFLAKE_TOKEN_URL_PROD
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_TOKEN_URL_DEV
+      key: Minerva/pipeline/SNOWFLAKE_TOKEN_URL_DEV
+      engine: native
+      type: shared
+    - name: PEM_CONTROL_PLANE
+      key: Minerva/pipeline/PEM_CONTROL_PLANE
+      engine: native
+      type: shared
+    - name: GHE_TOKEN_CP
+      key: Minerva/pipeline/GHE_TOKEN_CP
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_DATABASE_DEV
+      key: Minerva/pipeline/SNOWFLAKE_DATABASE_DEV
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_WAREHOUSE_DEV
+      key: Minerva/pipeline/SNOWFLAKE_WAREHOUSE_DEV
+      engine: native
+      type: shared
+    - name: SNOWFLAKE_ROLE_DEV
+      key: Minerva/pipeline/SNOWFLAKE_ROLE_DEV
+      engine: native
+      type: shared
+
+# *** Conditions ***
+on_pr_dev: &on_pr_dev
+  ruleset:
+    if:
+      branch: [dev]
+      event: [ pull_request ]
+
+on_pr_qas: &on_pr_qas
+  ruleset:
+    if:
+      branch: [qas]
+      event: [ pull_request ]
+
+on_pr_main: &on_pr_main
+  ruleset:
+    if:
+      branch: [main]
+      event: [ pull_request ]
+
+
+on_push_dev: &on_push_dev
+  ruleset:
+    if:
+      branch: [ dev  ]
+      event: [ push ]
+
+on_push_qas: &on_push_qas
+  ruleset:
+    if:
+      branch: [ qas  ]
+      event: [ push ]
+
+on_push_main: &on_push_main
+  ruleset:
+    if:
+      branch: [ main]
+      event: [ push ]
+
+stages:
+  plan:
+    steps:
+      - name: plan-on-pr-dev
+        image: docker-utilities.binrepo.cglcloud.in/minerva/mef-dp-pipeline:${IMAGE_TAG}
+        << : *on_pr_dev
+        parameters:
+            env: dev
+            apply: false
+            version: "${VELA_BUILD_COMMIT:0:7}"
+        environment:
+            ASTRO_CONSOLIDATED_ARCHITECTURE: "true"
+            ASTRO_CONSOLIDATED_WORKSPACE_NAME: "AGTR"
+            ASTRO_CONSOLIDATED_DEPLOYMENT_NAME: "MINERVA-DCT-DEV"
+            ASTRO_CONSOLIDATED_CONFIG_BACKEND: "minerva-dev-corp-mef-s3configbackend-761018892982-useast1"
+            ASTRO_ORIGINAL_ARCHITECTURE: "false"
+        secrets:
+          - source: ASTRO_TOKEN
+            target: ASTRO_API_TOKEN
+          - source: CLUSTER_ID
+            target: CLUSTER_ID
+          - source: SNOWFLAKE_SCOPE_DEV
+            target: SNOWFLAKE_SCOPE_DEV
+          - source: SNOWFLAKE_CLIENT_SECRET_DEV
+            target: SNOWFLAKE_CLIENT_SECRET_DEV
+          - source: SNOWFLAKE_CLIENT_ID_DEV
+            target: SNOWFLAKE_CLIENT_ID_DEV
+          - source: SNOWFLAKE_USER_DEV
+            target: SNOWFLAKE_USER_DEV
+          - source: SNOWFLAKE_TOKEN_URL_DEV
+            target: SNOWFLAKE_TOKEN_URL_DEV
+          - source: SNOWFLAKE_DATABASE_DEV
+            target: SNOWFLAKE_DATABASE_DEV
+          - source: SNOWFLAKE_WAREHOUSE_DEV
+            target: SNOWFLAKE_WAREHOUSE_DEV
+          - source: SNOWFLAKE_ROLE_DEV
+            target: SNOWFLAKE_ROLE_DEV
+          - source: PEM_CONTROL_PLANE
+            target: PEM_CONTROL_PLANE
+          - source: GHE_TOKEN_CP
+            target: GHE_TOKEN_CP
+
+      - name: plan-on-pr-qas
+        image: docker-utilities.binrepo.cglcloud.in/minerva/mef-dp-pipeline:${IMAGE_TAG}
+        << : *on_pr_qas
+        parameters:
+            env: qa
+            apply: false
+            version: "${VELA_BUILD_COMMIT:0:7}"
+        secrets:
+          - source: ASTRO_TOKEN
+            target: ASTRO_API_TOKEN
+          - source: CLUSTER_ID
+            target: CLUSTER_ID
+          - source: SNOWFLAKE_SCOPE_DEV
+            target: SNOWFLAKE_SCOPE_DEV
+          - source: SNOWFLAKE_CLIENT_SECRET_DEV
+            target: SNOWFLAKE_CLIENT_SECRET_DEV
+          - source: SNOWFLAKE_CLIENT_ID_DEV
+            target: SNOWFLAKE_CLIENT_ID_DEV
+          - source: SNOWFLAKE_USER_DEV
+            target: SNOWFLAKE_USER_DEV
+          - source: SNOWFLAKE_TOKEN_URL_DEV
+            target: SNOWFLAKE_TOKEN_URL_DEV
+          - source: SNOWFLAKE_DATABASE_DEV
+            target: SNOWFLAKE_DATABASE_DEV
+          - source: SNOWFLAKE_WAREHOUSE_DEV
+            target: SNOWFLAKE_WAREHOUSE_DEV
+          - source: SNOWFLAKE_ROLE_DEV
+            target: SNOWFLAKE_ROLE_DEV
+          - source: PEM_CONTROL_PLANE
+            target: PEM_CONTROL_PLANE
+          - source: GHE_TOKEN_CP
+            target: GHE_TOKEN_CP
+
+      - name: plan-on-pr-main
+        image: docker-utilities.binrepo.cglcloud.in/minerva/mef-dp-pipeline:${IMAGE_TAG}
+        << : *on_pr_main
+        parameters:
+            env: prd
+            apply: false
+            version: "${VELA_BUILD_COMMIT:0:7}"
+        environment:
+            ASTRO_CONSOLIDATED_ARCHITECTURE: "true"
+            ASTRO_CONSOLIDATED_WORKSPACE_NAME: "AGTR"
+            ASTRO_CONSOLIDATED_DEPLOYMENT_NAME: "MINERVA-DCT-PRD"
+            ASTRO_CONSOLIDATED_CONFIG_BACKEND: "minerva-prd-corp-mef-s3configbackend-301279252956-useast1"
+            ASTRO_CONSOLIDATED_CONFIG_BACKEND_IAM_ROLE_ACCOUNT: "301279252956"
+            ASTRO_CONSOLIDATED_CONFIG_BACKEND_IAM_ROLE_NAME: "minerva-prd-corp-mef-s3configbackend-iam-role"
+            ASTRO_ORIGINAL_ARCHITECTURE: "false"
+        secrets:
+          - source: ASTRO_TOKEN
+            target: ASTRO_API_TOKEN
+          - source: CLUSTER_ID
+            target: CLUSTER_ID
+          - source: SNOWFLAKE_SCOPE_DEV
+            target: SNOWFLAKE_SCOPE_DEV
+          - source: SNOWFLAKE_CLIENT_SECRET_DEV
+            target: SNOWFLAKE_CLIENT_SECRET_DEV
+          - source: SNOWFLAKE_CLIENT_ID_DEV
+            target: SNOWFLAKE_CLIENT_ID_DEV
+          - source: SNOWFLAKE_USER_DEV
+            target: SNOWFLAKE_USER_DEV
+          - source: SNOWFLAKE_TOKEN_URL_DEV
+            target: SNOWFLAKE_TOKEN_URL_DEV
+          - source: SNOWFLAKE_DATABASE_DEV
+            target: SNOWFLAKE_DATABASE_DEV
+          - source: SNOWFLAKE_WAREHOUSE_DEV
+            target: SNOWFLAKE_WAREHOUSE_DEV
+          - source: SNOWFLAKE_ROLE_DEV
+            target: SNOWFLAKE_ROLE_DEV
+          - source: PEM_CONTROL_PLANE
+            target: PEM_CONTROL_PLANE
+          - source: GHE_TOKEN_CP
+            target: GHE_TOKEN_CP
+
+  deploy:
+    steps:
+    - name: generate_aws_creds_dev
+      image: cargill/vela-aws-credentials:latest
+      << : *on_push_dev
+      id_request: yes
+      parameters:
+        region: us-east-1
+        role: arn:aws:iam::761018892982:role/minerva-dev-corp-mef-pipelinerw-iam-role
+        script_write: true
+        script_format: credential_file
+        script_path: /vela/secrets/aws/dev/creds
+      environment:
+          ASTRO_CONSOLIDATED_ARCHITECTURE: "true"
+          ASTRO_CONSOLIDATED_WORKSPACE_NAME: "AGTR"
+          ASTRO_CONSOLIDATED_DEPLOYMENT_NAME: "MINERVA-DCT-DEV"
+          ASTRO_CONSOLIDATED_CONFIG_BACKEND: "minerva-dev-corp-mef-s3configbackend-761018892982-useast1"
+          ASTRO_ORIGINAL_ARCHITECTURE: "false"
+
+    - name: deploy-dev
+      image: docker-utilities.binrepo.cglcloud.in/minerva/mef-dp-pipeline:${IMAGE_TAG}
+      << : *on_push_dev
+      parameters:
+          env: dev
+          apply: true
+      environment:
+            ASTRO_CONSOLIDATED_ARCHITECTURE: "true"
+            ASTRO_CONSOLIDATED_WORKSPACE_NAME: "AGTR"
+            ASTRO_CONSOLIDATED_DEPLOYMENT_NAME: "MINERVA-DCT-DEV"
+            ASTRO_CONSOLIDATED_CONFIG_BACKEND: "minerva-dev-corp-mef-s3configbackend-761018892982-useast1"
+            ASTRO_ORIGINAL_ARCHITECTURE: "false"
+      secrets:
+        - source: ASTRO_TOKEN
+          target: ASTRO_API_TOKEN
+        - source: CLUSTER_ID
+          target: CLUSTER_ID
+        - source: SNOWFLAKE_SCOPE_DEV
+          target: SNOWFLAKE_SCOPE_DEV
+        - source: SNOWFLAKE_CLIENT_SECRET_DEV
+          target: SNOWFLAKE_CLIENT_SECRET_DEV
+        - source: SNOWFLAKE_CLIENT_ID_DEV
+          target: SNOWFLAKE_CLIENT_ID_DEV
+        - source: SNOWFLAKE_USER_DEV
+          target: SNOWFLAKE_USER_DEV
+        - source: SNOWFLAKE_TOKEN_URL_DEV
+          target: SNOWFLAKE_TOKEN_URL_DEV
+        - source: SNOWFLAKE_DATABASE_DEV
+          target: SNOWFLAKE_DATABASE_DEV
+        - source: SNOWFLAKE_WAREHOUSE_DEV
+          target: SNOWFLAKE_WAREHOUSE_DEV
+        - source: SNOWFLAKE_ROLE_DEV
+          target: SNOWFLAKE_ROLE_DEV
+        - source: PEM_CONTROL_PLANE
+          target: PEM_CONTROL_PLANE
+        - source: GHE_TOKEN_CP
+          target: GHE_TOKEN_CP
+
+    - name: deploy-qas
+      image: docker-utilities.binrepo.cglcloud.in/minerva/mef-dp-pipeline:${IMAGE_TAG}
+      << : *on_push_qas
+      parameters:
+          env: qa
+          apply: true
+      secrets:
+        - source: ASTRO_TOKEN
+          target: ASTRO_API_TOKEN
+        - source: CLUSTER_ID
+          target: CLUSTER_ID
+        - source: SNOWFLAKE_SCOPE_DEV
+          target: SNOWFLAKE_SCOPE_DEV
+        - source: SNOWFLAKE_CLIENT_SECRET_DEV
+          target: SNOWFLAKE_CLIENT_SECRET_DEV
+        - source: SNOWFLAKE_CLIENT_ID_DEV
+          target: SNOWFLAKE_CLIENT_ID_DEV
+        - source: SNOWFLAKE_USER_DEV
+          target: SNOWFLAKE_USER_DEV
+        - source: SNOWFLAKE_TOKEN_URL_DEV
+          target: SNOWFLAKE_TOKEN_URL_DEV
+        - source: SNOWFLAKE_DATABASE_DEV
+          target: SNOWFLAKE_DATABASE_DEV
+        - source: SNOWFLAKE_WAREHOUSE_DEV
+          target: SNOWFLAKE_WAREHOUSE_DEV
+        - source: SNOWFLAKE_ROLE_DEV
+          target: SNOWFLAKE_ROLE_DEV
+        - source: PEM_CONTROL_PLANE
+          target: PEM_CONTROL_PLANE
+        - source: GHE_TOKEN_CP
+          target: GHE_TOKEN_CP
+
+    - name: generate_aws_creds_prd
+      image: cargill/vela-aws-credentials:latest
+      << : *on_push_main
+      id_request: yes
+      parameters:
+        region: us-east-1
+        role: arn:aws:iam::301279252956:role/minerva-prd-corp-mef-pipelinerw-iam-role
+        script_write: true
+        script_format: credential_file
+        script_path: /vela/secrets/aws/prd/creds
+      environment:
+          ASTRO_CONSOLIDATED_ARCHITECTURE: "true"
+          ASTRO_CONSOLIDATED_WORKSPACE_NAME: "AGTR"
+          ASTRO_CONSOLIDATED_DEPLOYMENT_NAME: "MINERVA-DCT-PRD"
+          ASTRO_CONSOLIDATED_CONFIG_BACKEND: "minerva-prd-corp-mef-s3configbackend-301279252956-useast1"
+          ASTRO_CONSOLIDATED_CONFIG_BACKEND_IAM_ROLE_ACCOUNT: "301279252956"
+          ASTRO_CONSOLIDATED_CONFIG_BACKEND_IAM_ROLE_NAME: "minerva-prd-corp-mef-s3configbackend-iam-role"
+          ASTRO_ORIGINAL_ARCHITECTURE: "false"
+
+    - name: deploy-prod
+      image: docker-utilities.binrepo.cglcloud.in/minerva/mef-dp-pipeline:${IMAGE_TAG}
+      << : *on_push_main
+      parameters:
+          env: prd
+          apply: true
+      environment:
+            ASTRO_CONSOLIDATED_ARCHITECTURE: "true"
+            ASTRO_CONSOLIDATED_WORKSPACE_NAME: "AGTR"
+            ASTRO_CONSOLIDATED_DEPLOYMENT_NAME: "MINERVA-DCT-PRD"
+            ASTRO_CONSOLIDATED_CONFIG_BACKEND: "minerva-prd-corp-mef-s3configbackend-301279252956-useast1"
+            ASTRO_CONSOLIDATED_CONFIG_BACKEND_IAM_ROLE_ACCOUNT: "301279252956"
+            ASTRO_CONSOLIDATED_CONFIG_BACKEND_IAM_ROLE_NAME: "minerva-prd-corp-mef-s3configbackend-iam-role"
+            ASTRO_ORIGINAL_ARCHITECTURE: "false"
+      secrets:
+        - source: ASTRO_TOKEN
+          target: ASTRO_API_TOKEN
+        - source: CLUSTER_ID
+          target: CLUSTER_ID
+        - source: SNOWFLAKE_SCOPE_DEV
+          target: SNOWFLAKE_SCOPE_DEV
+        - source: SNOWFLAKE_CLIENT_SECRET_DEV
+          target: SNOWFLAKE_CLIENT_SECRET_DEV
+        - source: SNOWFLAKE_CLIENT_ID_DEV
+          target: SNOWFLAKE_CLIENT_ID_DEV
+        - source: SNOWFLAKE_USER_DEV
+          target: SNOWFLAKE_USER_DEV
+        - source: SNOWFLAKE_TOKEN_URL_DEV
+          target: SNOWFLAKE_TOKEN_URL_DEV
+        - source: SNOWFLAKE_DATABASE_DEV
+          target: SNOWFLAKE_DATABASE_DEV
+        - source: SNOWFLAKE_WAREHOUSE_DEV
+          target: SNOWFLAKE_WAREHOUSE_DEV
+        - source: SNOWFLAKE_ROLE_DEV
+          target: SNOWFLAKE_ROLE_DEV
+        - source: PEM_CONTROL_PLANE
+          target: PEM_CONTROL_PLANE
+        - source: GHE_TOKEN_CP
+          target: GHE_TOKEN_CP

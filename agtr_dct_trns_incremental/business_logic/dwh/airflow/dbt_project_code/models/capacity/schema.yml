@@ -1,0 +1,254 @@
+version: 2
+
+models:
+  - name: loading_capacity
+    description: >
+      To do the description.
+
+    columns:
+    - name: itemid
+      description: To do the description.
+      data_type: text
+      # tests:
+      #   - not_null
+
+    - name: startdate
+      description: To do the description.
+      data_type: text
+      # tests:
+      #   - not_null
+
+    - name: enddate
+      description: To do the description.
+      data_type: text
+      # tests:
+      #   - not_null
+
+    - name: location
+      description: To do the description.
+      data_type: text
+      # tests:
+      #   - not_null
+
+    - name: transmodetype
+      description: To do the description.
+      data_type: text
+      # tests:
+      #   - not_null
+
+    - name: distloadingcapacity
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: text
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: location_storage_capacity
+    description: >
+      To do the description.
+
+    columns:
+    - name: itemid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: locationid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: mincapacity
+      description: To do the description.
+      data_type: number
+
+    - name: maxcapacity
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: transportation_contract_details
+    description: >
+      To do the description.
+
+    columns:
+    - name: transportationcontractid
+      description: To do the description.
+      data_type: number
+      # tests:
+      #   - not_null
+
+    - name: transportationcontractlineid
+      description: To do the description.
+      data_type: number
+      # tests:
+      #   - not_null
+
+    - name: mintolerance
+      description: To do the description.
+      data_type: number
+
+    - name: source
+      description: To do the description.
+      data_type: string
+
+    - name: destination
+      description: To do the description.
+      data_type: string
+
+    - name: itemid
+      description: To do the description.
+      data_type: string
+
+    - name: penaltyfee
+      description: To do the description.
+      data_type: number
+
+    - name: laneid
+      description: To do the description.
+      data_type: string
+
+    - name: transmode
+      description: To do the description.
+      data_type: string
+
+    - name: startdate
+      description: To do the description.
+      data_type: string
+
+    - name: enddate
+      description: To do the description.
+      data_type: string
+
+    - name: quantity
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: comments
+      description: To do the description.
+      data_type: string
+
+    - name: paidpenalty
+      description: To do the description.
+      data_type: number
+
+    - name: currency
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: unloading_capacity
+    description: >
+      To do the description.
+
+    columns:
+    - name: transmodetype
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: itemid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: location
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: startdate
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: enddate
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: distunloadingcapacity
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string

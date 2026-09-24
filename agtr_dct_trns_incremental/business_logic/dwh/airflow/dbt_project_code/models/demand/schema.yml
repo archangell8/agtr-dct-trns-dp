@@ -1,0 +1,804 @@
+version: 2
+
+models:
+  - name: actual_snoe
+    description: >
+      To do the description.
+
+    columns:
+    - name: itemid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: sourceid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: transmode
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: finaldestinationid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: day
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: operator
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: operationtype
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: plannedquantity
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: actual_vessel_load
+    description: >
+      To do the description.
+
+    columns:
+    - name: date
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: vesselid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: itemid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: loadedquantity
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: distribution_snoe
+    description: >
+      To do the description.
+
+    columns:
+    - name: referencedate
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: itemid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: sourceid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: transmode
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: finaldestinationid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: day
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: operator
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: operationtype
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: plannedquantity
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: isbaseline
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: port_down_time
+    description: >
+      To do the description.
+
+    columns:
+    - name: location
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: startdate
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: duration
+      description: To do the description.
+      data_type: float
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: port_penalty
+    description: >
+      To do the description.
+
+    columns:
+    - name: vesselid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: date
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: type
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: itemid
+      description: To do the description.
+      data_type: string
+
+    - name: estimatedvalue
+      description: To do the description.
+      data_type: number
+
+    - name: actualvalue
+      description: To do the description.
+      data_type: number
+
+    - name: currency
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: port_swap
+    description: >
+      To do the description.
+
+    columns:
+    - name: creditor
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: debitor
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: location
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: itemid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: date
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: quantity
+      description: To do the description.
+      data_type: number
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: port_window
+    description: >
+      To do the description.
+
+    columns:
+    - name: portwindowid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: location
+      description: To do the description.
+      data_type: string
+
+    - name: startcak
+      description: To do the description.
+      data_type: string
+
+    - name: endcak
+      description: To do the description.
+      data_type: string
+
+    - name: startrolling
+      description: To do the description.
+      data_type: string
+
+    - name: endrolling
+      description: To do the description.
+      data_type: string
+
+    - name: portwindowstatus
+      description: To do the description.
+      data_type: string
+
+    - name: quantity
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: psi_ibp
+    description: >
+      To do the description.
+
+    columns:
+    - name: item
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: resourceid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: location
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: customerid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: month
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: valuetype
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: valueinput
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: sales_order_delivery
+    description: >
+      To do the description.
+
+    columns:
+    - name: demandid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: item
+      description: To do the description.
+      data_type: string
+
+    - name: location
+      description: To do the description.
+      data_type: string
+
+    - name: sourcebp
+      description: To do the description.
+      data_type: string
+
+    - name: customerid
+      description: To do the description.
+      data_type: string
+
+    - name: shipto
+      description: To do the description.
+      data_type: string
+
+    - name: referenceport
+      description: To do the description.
+      data_type: string
+
+    - name: deliveredsalesorderquantity
+      description: To do the description.
+      data_type: number
+
+    - name: committedsalesorderquantity
+      description: To do the description.
+      data_type: number
+
+    - name: creationdateofsalesorderdocument
+      description: To do the description.
+      data_type: string
+
+    - name: salesorderdeliverydate
+      description: To do the description.
+      data_type: string
+
+    - name: salesordercommitdate
+      description: To do the description.
+      data_type: string
+
+    - name: lastchangeddateofsalesorder
+      description: To do the description.
+      data_type: string
+
+    - name: freighttype
+      description: To do the description.
+      data_type: string
+
+    - name: blockedquantity
+      description: To do the description.
+      data_type: string
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: ordersalesforce
+      description: To do the description.
+      data_type: string
+
+    - name: lta
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: vessel_contract
+    description: >
+      To do the description.
+
+    columns:
+    - name: location
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: month
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: item
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: value
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: vessel_details
+    description: >
+      To do the description.
+
+    columns:
+    - name: id
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: name
+      description: To do the description.
+      data_type: string
+
+    - name: estimatedtimearrival
+      description: To do the description.
+      data_type: string
+
+    - name: estimatedtimeberthing
+      description: To do the description.
+      data_type: string
+
+    - name: estimatedtimecompletion
+      description: To do the description.
+      data_type: string
+
+    - name: laycanmin
+      description: To do the description.
+      data_type: string
+
+    - name: laycanmax
+      description: To do the description.
+      data_type: string
+
+    - name: charter
+      description: To do the description.
+      data_type: string
+
+    - name: location
+      description: To do the description.
+      data_type: string
+
+    - name: demurragerate
+      description: To do the description.
+      data_type: string
+
+    - name: despatchrate
+      description: To do the description.
+      data_type: string
+
+    - name: buyer
+      description: To do the description.
+      data_type: string
+
+    - name: destination
+      description: To do the description.
+      data_type: string
+
+    - name: itemid
+      description: To do the description.
+      data_type: string
+      tests:
+        - not_null
+
+    - name: plannedquantity
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: vessel_load_baseline
+    description: >
+      To do the description.
+
+    columns:
+    - name: vesselid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: itemid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: referencedate
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: date
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: loadedquantity
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: vessel_load
+    description: >
+      To do the description.
+
+    columns:
+    - name: vesselid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: itemid
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: date
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: loadedquantity
+      description: To do the description.
+      data_type: number
+
+    - name: uom
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: number
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+

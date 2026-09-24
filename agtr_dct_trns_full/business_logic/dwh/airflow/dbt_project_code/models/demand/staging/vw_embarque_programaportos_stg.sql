@@ -1,0 +1,64 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH
+CTE_UDC_MAPPING AS (
+    SELECT
+        CATEGORY,
+        STAGE,
+        SOURCE_CODE,
+        TARGET_CODE,
+        TARGET_NUMBER
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }}
+    WHERE
+        1 = 1
+        AND STATUS = 'ATIVO'
+),
+
+EMBARQUE AS (
+    SELECT
+        CONTRATO,
+        NULL AS LAYCANMIN,
+        NULL AS LAYCANMAX,
+        TO_CHAR(DIA, 'DD-MM-YYYY') AS DIA,
+        TO_CHAR(ETA, 'DD-MM-YYYY') AS ESTIMATEDTIMEARRIVAL,
+        TO_CHAR(ETB, 'DD-MM-YYYY') AS ESTIMATEDTIMEBERTHING,
+        TO_CHAR(ETC, 'DD-MM-YYYY') AS ESTIMATEDTIMECOMPLETION,
+        TO_CHAR(ETB, 'DD-MM-YYYY') AS "DATE",
+        UPPER(LOCATION) AS "LOCATION",
+        UPPER(LOCATION_NAME) AS LOCATION_NAME,
+        UPPER(BERCO) AS BERCO,
+        UPPER(PRODUCT) AS ITEMID,
+        UPPER(TRIM(VESEEL_ID)) AS VESSEL_ID,
+        UPPER(SHIPPER) AS CHARTER,
+        COALESCE(REPLACE(VOLUME_CARGILL, ',', '.'), 0) AS VOLUME_CARGILL,
+        COALESCE(REPLACE(VOLUME_TERCEIRO, ',', '.'), 0) AS VOLUME_TERCEIRO,
+        (
+            COALESCE(REPLACE(VOLUME_CARGILL, ',', '.'), 0)
+            + COALESCE(REPLACE(VOLUME_TERCEIRO, ',', '.'), 0)
+        ) AS VOLUME_TOTAL,
+        UPPER(TRIM(NOME_NAVIO)) AS NOME_NAVIO,
+        CONCAT(
+            UPPER(LOCATION_NAME), '_', TO_CHAR(ETB, 'DD-MM-YYYY'), '_',
+            TRIM(NOME_NAVIO)
+        ) AS AGENCY_MERGE
+    FROM {{ source('pscfl', 'F_MIN_EMBARQUE_PORTO') }}
+    WHERE
+        UPPER(SHIPPER) NOT IN (
+            SELECT DISTINCT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'EMBARQUE_PORTO_FILTROS'
+                AND UDC.STAGE = 'SHIPPER'
+        )
+        AND DIA >= '2025-01-01 00:00:00'::TIMESTAMP
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM EMBARQUE

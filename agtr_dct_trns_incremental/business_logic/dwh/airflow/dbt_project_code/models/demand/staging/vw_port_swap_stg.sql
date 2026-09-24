@@ -1,0 +1,54 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH SWAP AS (
+    SELECT
+        NULL AS OPERATIONTYPE,
+        NULL AS VESSELID,
+        LOCATION,
+        UPPER(CREDITOR) AS CREDITOR,
+        UPPER(DEBITOR) AS DEBITOR,
+        REPLACE(TROCA, ',', '.') AS QUANTITY,
+        TO_CHAR(DIA, 'DD-MM-YYYY') AS "DATE",
+        CASE
+            WHEN UPPER(PRODUCT) = 'SOJA' THEN '00027'
+            WHEN UPPER(PRODUCT) = 'MILHO' THEN '00001'
+            WHEN UPPER(PRODUCT) = 'FARELO 46' THEN '09351'
+            WHEN UPPER(PRODUCT) = 'FARELO HI-PRO' THEN '09311'
+            WHEN UPPER(PRODUCT) = 'FARELO LO-PRO' THEN '09369'
+            WHEN UPPER(PRODUCT) = 'OLEO DEGOMADO' THEN '09101'
+            WHEN UPPER(PRODUCT) = 'OLEO REFINADO' THEN '09111'
+            WHEN UPPER(PRODUCT) = 'TRIGO' THEN '90584'
+            ELSE UPPER(PRODUCT)
+        END AS ITEMID
+    FROM {{ source('pscfl', 'F_MIN_TROCAS_PORTO') }}
+    WHERE
+        1 = 1
+        AND DIA IS NOT NULL
+        AND DIA >= '2025-01-01 00:00:00'::TIMESTAMP
+),
+
+VESSEL AS (
+    SELECT DISTINCT
+        COALESCE(QUANTITY::DECIMAL(20, 4), 0) AS QUANTITY,
+        --COALESCE(NULLIF(OPERATIONTYPE, ''), 'N/A') AS OPERATIONTYPE,
+        --COALESCE(NULLIF(VESSELID, ''), 'N/A') AS VESSELID,
+        COALESCE(NULLIF(CREDITOR, ''), 'N/A') AS CREDITOR,
+        COALESCE(NULLIF(DEBITOR, ''), 'N/A') AS DEBITOR,
+        COALESCE(NULLIF(LOCATION, ''), 'N/A') AS "LOCATION",
+        COALESCE(NULLIF(ITEMID, ''), 'N/A') AS ITEMID,
+        NULLIF(DATE, '') AS "DATE"
+    FROM SWAP
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM VESSEL
+WHERE
+    1 = 1
+    AND {{ date_max_filter('DATE', 'DD-MM-YYYY', 'null') }} --noqa

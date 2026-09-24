@@ -1,0 +1,116 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH CUSTOMER_SF AS (
+    SELECT
+        ID AS SALESFORCE_ID,
+        CUSTOMER_ID AS CUSTOMERID,
+        CUSTOMER_NAME AS CUSTOMERNAME,
+        MARKET,
+        CUSTOMER_GROUP AS CUSTOMERGROUP,
+        CUSTOMER_GROUP_DESCRIPTION AS CUSTOMERGROUPDESCRIPTION,
+        REGION_CUSTOMER AS TERRITORYREGION,
+        SUB_REGION_CUSTOMER AS TERRITORY,
+        SEGMENTATION,
+        BUSINESS_NAME AS BUSINESSNAME,
+        LASTMODIFIEDDATE
+    FROM {{ source('salesforce', 'CUSTOMER') }}
+    WHERE
+        1 = 1
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY CUSTOMER_ID ORDER BY LASTMODIFIEDDATE DESC
+    ) = 1
+),
+
+CTE_SOURCING_CONTRACTS AS (
+    SELECT DISTINCT TRIM(SOURCE) AS LOC
+    FROM {{ ref('tab_sourcing_contract_stg') }}
+    UNION DISTINCT
+    SELECT DISTINCT TRIM(SUPPLIERID) AS LOC
+    FROM {{ ref('tab_sourcing_contract_stg') }}
+    UNION DISTINCT
+    SELECT DISTINCT TRIM(FARM) AS LOC
+    FROM {{ ref('tab_sourcing_contract_stg') }}
+    UNION DISTINCT
+    SELECT DISTINCT TRIM(FARM_ADDRESS) AS LOC
+    FROM {{ ref('tab_shipment_fichas_jde_stg') }}
+    UNION DISTINCT
+    SELECT DISTINCT TRIM(ADDRESS_DESTINATION) AS LOC
+    FROM {{ ref('tab_shipment_fichas_jde_stg') }}
+    UNION DISTINCT
+    SELECT DISTINCT TO_CHAR(ROUND(ADDRESS_DESTINATION, 0)) AS LOC
+    FROM {{ ref('tab_shipment_loads_faturados_jde_stg') }}
+    UNION DISTINCT
+    SELECT DISTINCT TO_CHAR(ROUND(ADDRESS_DESTINATION, 0)) AS LOC
+    FROM {{ ref('tab_shipment_loads_abertos_jde_stg') }}
+    UNION DISTINCT
+    SELECT DISTINCT TRIM(ADRESS_COLETA) AS LOC
+    FROM {{ ref('tab_shipment_ctms_oc_stg') }}
+    UNION DISTINCT
+    SELECT DISTINCT ADRESS_COLETA AS LOC
+    FROM {{ source('ctms', 'VW_DCT_TN') }}
+    UNION DISTINCT
+    SELECT DISTINCT BP_DESTINO AS LOC
+    FROM {{ source('ctms', 'VW_DCT_TN') }}
+    UNION DISTINCT
+    SELECT DISTINCT ADDRESS_PRODUTOR AS LOC
+    FROM {{ ref('tab_cmm_stg') }}
+    UNION DISTINCT
+    SELECT DISTINCT ADDRESS_COLETA AS LOC
+    FROM {{ ref('tab_cmm_stg') }}
+    UNION DISTINCT
+    SELECT DISTINCT ADRESS_ORIGEM AS LOC
+    FROM {{ source('ctms', 'VW_DCT_LOAD') }}
+),
+
+SUPPLIER AS (
+    SELECT DISTINCT
+        COALESCE(NULLIF(TRIM(JDE.CUSTOMERID), ''), 'N/A') AS SUPPLIERID,
+        COALESCE(NULLIF(TRIM(JDE.TAXID), ''), 'N/A') AS TAXID,
+        COALESCE(NULLIF(TRIM(JDE.NAME), ''), 'N/A') AS "NAME",
+        COALESCE(NULLIF(TRIM(JDE.STATUS), ''), 'N/A') AS "STATUS",
+        REPLACE(
+            COALESCE(NULLIF(TRIM(JDE.ADDRESS), ''), 'N/A'), '|', ' '
+        ) AS "ADDRESS",
+        COALESCE(NULLIF(TRIM(JDE.COMPLEMENT), ''), 'N/A') AS COMPLEMENT,
+        REPLACE(
+            COALESCE(NULLIF(TRIM(JDE.NEIGHBORHOOD), ''), 'N/A'), '|', ' '
+        ) AS NEIGHBORHOOD,
+        COALESCE(NULLIF(TRIM(JDE.ZIPCODE), ''), 'N/A') AS ZIPCODE,
+        COALESCE(NULLIF(TRIM(JDE.CITY), ''), 'N/A') AS CITY,
+        COALESCE(NULLIF(TRIM(JDE.STATE), ''), 'N/A') AS "STATE",
+        COALESCE(NULLIF(TRIM(JDE.COUNTRY), ''), 'N/A') AS COUNTRY,
+        COALESCE(NULLIF(TRIM(SF.MARKET), ''), 'Nao Parametrizado') AS MARKET,
+        COALESCE(
+            NULLIF(TRIM(SF.TERRITORY), ''), 'Nao Parametrizado'
+        ) AS TERRITORY,
+        COALESCE(
+            NULLIF(TRIM(SF.SEGMENTATION), ''),
+            'Nao Parametrizado'
+        ) AS SEGMENTATION,
+        COALESCE(
+            NULLIF(TRIM(SF.CUSTOMERGROUP), ''),
+            'Nao Parametrizado'
+        ) AS SUPPLIERGROUP,
+        COALESCE(
+            NULLIF(TRIM(SF.CUSTOMERGROUPDESCRIPTION), ''),
+            'Nao Parametrizado'
+        ) AS SUPPLIERGROUPDESCRIPTION,
+        TRIM(JDE.CREDITBLOCKED::BOOLEAN) AS CREDITBLOCKED
+    FROM {{ ref('tab_customer_jde_stg') }} AS JDE
+    LEFT JOIN CUSTOMER_SF AS SF
+        ON JDE.CUSTOMERID = SF.CUSTOMERID
+    INNER JOIN CTE_SOURCING_CONTRACTS AS SC
+        ON NULLIF(JDE.CUSTOMERID, '') = NULLIF(SC.LOC, '')
+    WHERE
+        1 = 1
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM SUPPLIER

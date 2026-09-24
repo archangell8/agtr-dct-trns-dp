@@ -1,0 +1,195 @@
+-- noqa: disable=all
+{{
+    config(
+        materialized='table'
+    )
+}}
+
+WITH
+QUALITY_DISCOUNT AS (
+    SELECT
+        F4311.PDDMCT AS CONTRACT_NUMBER,
+        F4311.PDDOCO AS PURCHASE_CODE,
+        F4311.PDLNID - (F4311.PDLNID % 10) AS LINENUMBER,
+        TRY_CAST(F4311.PDOORN AS BIGINT) AS NUM_NF,
+        ROUND(SUM(F4311.PDUORG / 1000), 2) AS DISCOUNT
+    FROM {{ source('jde', 'F4311') }} AS F4311
+    WHERE
+        1 = 1
+        AND F4311.PDDCTO = 'OH'
+        AND F4311.PDLNTY = 'DD'
+        AND F4311.PDLTTR != '980'
+        AND F4311.PDKCOO IN ('52171', '52191', '52180')
+        AND F4311.PDTRDJ >= 125000
+        AND {{ filter_remove_jde_delete_data('F4311') }}
+    GROUP BY
+        F4311.PDDMCT,
+        F4311.PDDOCO,
+         F4311.PDLNID - (F4311.PDLNID % 10),
+        TRY_CAST(F4311.PDOORN AS BIGINT)
+),
+
+FICHAS_VALIDAS AS (
+    SELECT
+        FC.OPERATION_TYPE AS TIPO_DE_OPERACAO,
+        {{ check_empty_or_zero('FC.FARM_ADDRESS') }} AS ADDRESS_FAZENDA,
+        {{ check_empty_or_zero('FC.NEGOTIATION_BRANCH_PLANT') }} AS BP_NEGOCIACAO,
+        {{ check_empty_or_zero('FC.ADDRESS_DESTINATION') }} AS DESTINO_ADDRESS,
+        {{ check_empty_or_zero('FC.BRANCH_PLANT_DESTINATION') }} AS BP_DESTINO,
+        {{ check_empty_or_zero('FC.PURCHASE_CODE') }} AS FICHA,
+        FC.PURCHASE_STATUS_CODE AS CODIGO_STATUS_FICHA,
+        UPPER(FC.PURCHASE_STATUS) AS STATUS_FICHA,
+        {{ check_empty_or_zero('FC.ORIGINATION_CONTRACT') }} AS CONTRATO_ORIGINACAO,
+        FC.MODAL,
+        FC.CARRIER_ADDRESS AS ADDRESS_TRANSPORTADORA,
+        FC.CARRIER_NAME AS NOME_TRANSPORTADORA,
+        UPPER(
+            TRIM(
+                IFF(
+                    COALESCE(TRIM(FC.PLATE), '') = '',
+                    NULL,
+                    REPLACE(TRIM(FC.PLATE), '-', '')
+                )
+            )
+        ) AS PLACA,
+        FC.PURCHASE_DATE AS DATA_CRIACAO_FICHA,
+        FC.PRODUCT_CODE AS CODIGO_PRODUTO,
+        FC.TRANSPORTED_VOLUME AS VOLUME_TRANSPORTADO,
+        FC.UM_PRODUCT AS UOM,
+        FC.CURRENCY AS MOEDA,
+        MAX(FC.INVOICE_ISSUANCE_DATE) AS DATA_EMISSAO_NF,
+        FC.PURCHASE_APPLICATION_DATE AS DATA_APLICACAO_FICHA,
+        UPPER(REPLACE({{ check_empty('FC.LOT_ID') }}, '-', '')) AS LOTID,
+        UPPER(REPLACE({{ check_empty('FC.NUM_NF') }}, '-', '')) AS NF_NUM,
+        UPPER(REPLACE({{ check_empty('FC.INVOICE_SERIES') }}, '-', '')) AS NF_SERIE,
+        CASE
+            WHEN NULLIF(FC.CHAVE_NF, '') IS NULL
+                THEN
+                    CONCAT(
+                        TRIM(FC.NUM_NF),
+                        IFF(
+                            TRIM(FC.INVOICE_SERIES) != '',
+                            CONCAT('-', TRIM(FC.INVOICE_SERIES)),
+                            ''
+                        )
+                    )
+            ELSE TRIM(FC.CHAVE_NF)
+        END AS CHAVE_NF,
+        FC.INVOICE_VOLUME AS VOL_NF,
+        FC.APPLIED_VOLUME AS VOL_BALANCA,
+        CASE
+            WHEN NULLIF(FC.CHAVE_NF, '') IS NULL
+                THEN
+                    CONCAT(
+                        TRIM(FC.NUM_NF),
+                        IFF(
+                            TRIM(FC.INVOICE_SERIES) != '',
+                            CONCAT('-', TRIM(FC.INVOICE_SERIES)),
+                            ''
+                        )
+                    )
+            ELSE CONCAT('NFe', TRIM(FC.CHAVE_NF))
+        END AS ID_NF,
+        {{ check_empty_or_zero('FC.LOAD_NUMBER') }} AS LOAD_NUMBER,
+        FC.COMPANY,
+        FC.OPERATION_TYPE_FBZ,
+        MAX(FC.CANCELLATION_DATE) AS DATA_CANCELAMENTO,
+        FC.PRICETYPE,
+        FC.SOURCE_CNPJ,
+        FC.FINALDESTINATION,
+        FC.ID_OH_GLOBAL,
+        FC.NF_F4311,
+        FC.LINENUMBER,
+        FC.DESTINATION_CODE
+    FROM {{ ref('tab_shipment_fichas_jde_stg') }} AS FC
+    INNER JOIN {{ ref('item_master') }} AS IT
+        ON IT.ITEM = FC.PRODUCT_CODE
+    GROUP BY
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20,
+        21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38
+)
+
+SELECT
+    V.TIPO_DE_OPERACAO,
+    V.ADDRESS_FAZENDA,
+    V.BP_NEGOCIACAO,
+    V.DESTINO_ADDRESS,
+    V.BP_DESTINO,
+    V.FICHA,
+    V.CODIGO_STATUS_FICHA,
+    V.STATUS_FICHA,
+    V.CONTRATO_ORIGINACAO,
+    V.MODAL,
+    V.ADDRESS_TRANSPORTADORA,
+    V.NOME_TRANSPORTADORA,
+    MAX(V.PLACA) AS PLACA,
+    MAX(V.DATA_CRIACAO_FICHA) AS DATA_CRIACAO_FICHA,
+    V.CODIGO_PRODUTO,
+    MAX(V.VOLUME_TRANSPORTADO) AS VOLUME_TRANSPORTADO,
+    V.UOM,
+    V.MOEDA,
+    MAX(V.DATA_EMISSAO_NF) AS DATA_EMISSAO_NF,
+    MAX(V.DATA_APLICACAO_FICHA) AS DATA_APLICACAO_FICHA,
+    MAX(V.LOTID) AS LOTID,
+    V.NF_NUM,
+    MAX(V.NF_SERIE) AS NF_SERIE,
+    V.CHAVE_NF,
+    SUM(V.VOL_NF) AS VOL_NF,
+    SUM(V.VOL_BALANCA) AS VOL_BALANCA,
+    COALESCE(QD.DISCOUNT, QD2.DISCOUNT) AS VOL_DISCONTO,
+    V.ID_NF,
+    V.LOAD_NUMBER,
+    V.COMPANY,
+    V.OPERATION_TYPE_FBZ,
+    MAX(V.DATA_CANCELAMENTO) AS DATA_CANCELAMENTO,
+    V.PRICETYPE,
+    V.SOURCE_CNPJ,
+    V.FINALDESTINATION,
+    V.NF_F4311,
+    V.LINENUMBER,
+    V.DESTINATION_CODE
+FROM FICHAS_VALIDAS AS V
+LEFT JOIN QUALITY_DISCOUNT AS QD
+    ON
+        V.CONTRATO_ORIGINACAO = QD.CONTRACT_NUMBER
+        AND V.FICHA = QD.PURCHASE_CODE
+        AND V.NF_F4311 = QD.NUM_NF
+        AND V.LINENUMBER = QD.LINENUMBER
+LEFT JOIN QUALITY_DISCOUNT AS QD2
+    ON
+        V.CONTRATO_ORIGINACAO = QD2.CONTRACT_NUMBER
+        AND V.FICHA = QD2.PURCHASE_CODE
+        AND V.LINENUMBER = QD2.LINENUMBER
+WHERE
+    1 = 1
+    AND V.CHAVE_NF IS NOT NULL
+    AND V.COMPANY IN ('52171', '52191', '52180')
+GROUP BY
+    V.TIPO_DE_OPERACAO,
+    V.ADDRESS_FAZENDA,
+    V.BP_NEGOCIACAO,
+    V.DESTINO_ADDRESS,
+    V.BP_DESTINO,
+    V.FICHA,
+    V.CODIGO_STATUS_FICHA,
+    V.STATUS_FICHA,
+    V.CONTRATO_ORIGINACAO,
+    V.MODAL,
+    V.ADDRESS_TRANSPORTADORA,
+    V.NOME_TRANSPORTADORA,
+    V.CODIGO_PRODUTO,
+    V.UOM,
+    V.MOEDA,
+    V.NF_NUM,
+    V.CHAVE_NF,
+    V.ID_NF,
+    COALESCE(QD.DISCOUNT, QD2.DISCOUNT),
+    V.LOAD_NUMBER,
+    V.COMPANY,
+    V.OPERATION_TYPE_FBZ,
+    V.PRICETYPE,
+    V.SOURCE_CNPJ,
+    V.FINALDESTINATION,
+    V.NF_F4311,
+    V.LINENUMBER,
+    V.DESTINATION_CODE

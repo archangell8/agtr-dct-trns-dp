@@ -1,0 +1,120 @@
+--noqa:disable=RF06
+{{
+    config(
+        materialized='table',
+        tags=['wf38a_recflag']
+    )
+}}
+
+WITH
+TRF_SHIPMENT_FLAG_TEMP AS (
+    SELECT
+        A.SOURCELOCATION,
+        C.ITEM,
+        MIN(A.ACTUALSHIPDATE) AS MIN_ACTUALSHIPDATE
+    FROM {{ ref('intstg_shipment_details_changed') }} AS A
+    INNER JOIN {{ ref('location_master') }} AS B
+        ON A.SOURCELOCATION = B.LOCATIONID
+    INNER JOIN {{ ref('item_master') }} AS C
+        ON A.ITEM = C.ITEM
+    WHERE
+        A.OPERATIONTYPE = 'TRF'
+        AND B.LOCATION_UNIT_STRUCTURE NOT IN ('PORTO FLUVIAL', 'TRANSBORDO')
+        AND C.L3 = 'INBOUND'
+        AND A.SALESORDERDELIVERYID = 'N/A'
+        AND A.ACTUALSHIPDATE IS NOT NULL
+        AND A.CHANGED_FLAG = 1
+    GROUP BY
+        A.SOURCELOCATION,
+        C.ITEM
+),
+
+TRF_SHIPMENT_FLAG AS (
+    SELECT
+        S.*,
+        'TRF' AS FLAG_RULE
+    FROM {{ ref('intstg_shipment_details') }} AS S
+    INNER JOIN TRF_SHIPMENT_FLAG_TEMP AS D
+        ON
+            S.SOURCELOCATION = D.SOURCELOCATION
+            AND S.ITEM = D.ITEM
+    INNER JOIN {{ ref('item_master') }} AS C
+        ON S.ITEM = C.ITEM
+    WHERE
+        S.ACTUALSHIPDATE >= D.MIN_ACTUALSHIPDATE
+        AND S.OPERATIONTYPE = 'TRF'
+        AND C.L3 = 'INBOUND'
+        AND S.SALESORDERDELIVERYID = 'N/A'
+),
+
+SC_CONTRACT_FLAG AS (
+    SELECT
+        'SOURCING CONTRACT' AS FLAG_RULE,
+        TRIM(SPLIT_PART(A.SOURCINGCONTRACTNUMBER, '-', 2)) AS CONTRACTID,
+        MIN(A.ACTUALSHIPDATE) AS MIN_ACTUALSHIPDATE
+    FROM {{ ref('intstg_shipment_details_changed') }} AS A
+    WHERE
+        A.ACTUALSHIPDATE IS NOT NULL
+        AND A.SOURCINGCONTRACTNUMBER != 'N/A'
+        AND A.CHANGED_FLAG = 1
+    GROUP BY
+        TRIM(SPLIT_PART(A.SOURCINGCONTRACTNUMBER, '-', 2))
+),
+
+SC_SHIPMENT_FLAG AS (
+    SELECT
+        A.*,
+        'SOURCING CONTRACT' AS FLAG_RULE
+    FROM {{ ref('intstg_shipment_details') }} AS A
+    INNER JOIN SC_CONTRACT_FLAG AS B
+        ON TRIM(
+            SPLIT_PART(A.SOURCINGCONTRACTNUMBER, '-', 2)
+        ) = B.CONTRACTID
+    WHERE A.ACTUALSHIPDATE >= B.MIN_ACTUALSHIPDATE
+),
+
+VENDAS_SHIPMENT_FLAG_TEMP AS (
+    SELECT
+        A.SALESORDERDELIVERYID,
+        MIN(A.ACTUALSHIPDATE) AS MIN_ACTUALSHIPDATE
+    FROM {{ ref('intstg_shipment_details_changed') }} AS A
+    INNER JOIN {{ ref('location_master') }} AS B
+        ON A.SOURCELOCATION = B.LOCATIONID
+    INNER JOIN {{ ref('item_master') }} AS C
+        ON A.ITEM = C.ITEM
+    WHERE
+        A.OPERATIONTYPE = 'VEN'
+        AND C.L3 = 'INBOUND'
+        AND A.SOURCINGCONTRACTNUMBER = 'N/A'
+        AND A.ACTUALSHIPDATE IS NOT NULL
+        AND A.CHANGED_FLAG = 1
+    GROUP BY
+        A.SALESORDERDELIVERYID
+),
+
+VENDAS_SHIPMENT_FLAG AS (
+    SELECT
+        A.*,
+        'VENDAS' AS FLAG_RULE
+    FROM {{ ref('intstg_shipment_details') }} AS A
+    INNER JOIN VENDAS_SHIPMENT_FLAG_TEMP AS B
+        ON A.SALESORDERDELIVERYID = B.SALESORDERDELIVERYID
+    WHERE
+        A.ACTUALSHIPDATE >= B.MIN_ACTUALSHIPDATE
+        AND A.OPERATIONTYPE = 'VEN'
+        AND A.SOURCINGCONTRACTNUMBER = 'N/A'
+),
+
+INTSTG_FLAGSHIPMENT AS (
+    SELECT * FROM TRF_SHIPMENT_FLAG
+    UNION ALL
+    SELECT * FROM SC_SHIPMENT_FLAG
+    UNION ALL
+    SELECT * FROM VENDAS_SHIPMENT_FLAG
+)
+
+SELECT DISTINCT
+    SHIPMENTLINEID,
+    'TRUE' AS RECALCULATE_ACTUALS_FLAG,
+    HASH(*) AS HASH_ID
+FROM INTSTG_FLAGSHIPMENT

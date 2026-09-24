@@ -1,0 +1,45 @@
+name: 'mef_dct_project'
+
+config-version: 2
+version: '0.1'
+
+profile: 'mef_dct_project'
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+analysis-paths: ["analysis"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_modules"
+  - "logs"
+require-dbt-version: [">=1.0.0", "<2.0.0"]
+
+# Define variables used in the project
+vars:
+  # Materialization type of mart models
+  mat: table
+  # Type of execution
+  exec: full
+  # Incremental materialization strategy
+  mat_inc_strat: delete+insert
+
+# Define configuration of models
+# models:
+  # mef_dct_project:
+  #   # Monitoring (shoud be disable by default)
+  #   monitoring:
+  #     +enabled: false
+    # master_data:
+    #   mart:
+    #     customer:
+    #       +materialized: table
+    #       +incremental_strategy: delete+insert
+    #     item:
+    #       +materialized: table
+    #       +incremental_strategy: delete+insert
+
+

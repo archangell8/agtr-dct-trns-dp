@@ -1,0 +1,53 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='table',
+        tags=['master']
+    )
+}}
+
+WITH
+LOCATIONMASTER AS (
+    SELECT DISTINCT
+        LOCATION_UNIT_ID,
+        LOCATION_UNIT_STRUCTURE
+    FROM {{ ref('tab_location_internal_stg') }}
+),
+
+LOCATIONBP_MASTER AS (
+    SELECT DISTINCT
+        BP.BP_NUMBER AS BP,
+        BP.ORIGIN_UNIT_ID AS "LOCATION",
+        L.LOCATION_UNIT_STRUCTURE,
+        'All' AS ALL_LOCATION_BP,
+        BP.ORIGIN_SUBREGION,
+        BP.STATUS,
+        BP.DESTINATION_UNIT_ID AS DESTINATION,
+        BP.LOCATION_CODE,
+        BP.LOCATION_TYPE,
+        BP.DESTINATION_IBGE_ID,
+        BP.ORIGIN_FILIAL_EXPENSE,
+        CONCAT(BP.BP_NUMBER, ' - ', BP.BP_NAME) AS BP_DISPLAYNAME,
+        CONCAT(
+            BP.ORIGIN_UNIT_ID, ' - ', BP.ORIGIN_UNIT_NAME
+        ) AS LOCATION_DISPLAYNAME,
+        CONCAT(
+            BP.ADDRESS_BOOK, ' - ', BP.DESTINATION_UNIT_NAME
+        ) AS ADDRESS_BOOK,
+        CONCAT(
+            BP.ADDRESS_BOOK, ' - ', BP.DESTINATION_UNIT_NAME
+        ) AS ADDRESS_BOOK_DISPLAYNAME,
+        IFF(
+            BP.DESTINATION_UNIT_ID = 'N/A',
+            'N/A',
+            CONCAT(BP.DESTINATION_UNIT_ID, ' - ', BP.DESTINATION_UNIT_NAME)
+        ) AS DESTINATION_DISPLAYNAME
+    FROM {{ ref('location_bp_master') }} AS BP
+    LEFT JOIN LOCATIONMASTER AS L
+        ON BP.ORIGIN_UNIT_ID = L.LOCATION_UNIT_ID
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM LOCATIONBP_MASTER

@@ -1,0 +1,146 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='table',
+        tags=['wf16']
+    )
+}}
+
+WITH
+SHIPMENT_MASTER AS (
+    SELECT
+        ID,
+        LOADNUMBER,
+        PROFILE,
+        PALLET,
+        PALLETQUANTITY,
+        CARRIER,
+        SALESORDERDELIVERYID,
+        ACTUALSHIPDATE,
+        ROW_NUMBER() OVER (PARTITION BY LOADNUMBER ORDER BY ID) AS LINEID
+    FROM {{ ref('shipment_details_master') }}
+),
+
+SHIPMENTLINEID_CREATOR AS (
+    SELECT
+        ID,
+        PROFILE,
+        PALLET,
+        PALLETQUANTITY,
+        CARRIER,
+        ACTUALSHIPDATE,
+        SALESORDERDELIVERYID AS DEMANDID,
+        LOADNUMBER AS CTMSLOADNUMBER,
+        IFF(LOADNUMBER = 'N/A', ID, LOADNUMBER) AS SHIPMENTID,
+        IFF(
+            LOADNUMBER = 'N/A', ID, CONCAT(LOADNUMBER, ' -', LINEID)
+        ) AS SHIPMENTLINEID
+    FROM SHIPMENT_MASTER
+),
+
+ITEMLANE_MASTER AS (
+    SELECT
+        IL.BODLANEID,
+        MI.ITEM,
+        COALESCE(ROUND(IL.LEADTIME::DECIMAL(20, 3) / 24, 0), 0) AS LEADTIME
+    FROM {{ ref('itemlanetransmode_master') }} AS IL
+    INNER JOIN {{ ref('item_master') }} AS MI
+        ON IL.ITEMID = MI.L2
+),
+
+INTSTG_SHIP AS (
+    SELECT
+        A.ID,
+        D.SHIPMENTID,
+        D.CTMSLOADNUMBER,
+        D.SHIPMENTLINEID,
+        A.OPERATIONTYPE,
+        A.SOURCE,
+        A.SOURCE AS SOURCELOCATION,
+        A.SOURCEBP AS SOURCELOCATIONBP,
+        A.DESTINATION AS DESTINATIONLOCATION,
+        A.ITEMID AS ITEM,
+        A.LANEID AS BODLANE,
+        A.SOURCINGCONTRACTID AS SOURCINGCONTRACTNUMBER,
+        A.TRANSMODE,
+        A.UOM,
+        A.CURRENCY,
+        A.FINALDESTINATION,
+        A.SALESORDERDELIVERYID,
+        A.PRICETYPE,
+        A.NUMERO_OC,
+        A.TN,
+        A.ROTA,
+        A.DATA_PREV_COLETA,
+        A.DATA_EMISSAO_OC,
+        A.DATA_VALIDACAO_QRCODE,
+        A.DATA_EMISSAO_NF_LOAD,
+        A.DATA_EMISSAO_NF_FICHA,
+        COALESCE(
+            CASE
+                WHEN A.CARRIER LIKE '%-%'
+                    THEN SUBSTR(A.CARRIER, 1, CHARINDEX('-', A.CARRIER) - 2)
+                ELSE A.CARRIER
+            END,
+            'N/A'
+        ) AS CARRIER,
+        COALESCE(A.VEHICLEID, 'N/A') AS VEHICALID,
+        TRY_TO_DATE(A.ESTIMATEDSHIPDATE, 'DD-MM-YYYY') AS ESTIMATEDSHIPDATE,
+        TRY_TO_DATE(A.ACTUALSHIPDATE, 'DD-MM-YYYY HH:MI:SS') AS ACTUALSHIPDATE,
+        CASE
+            WHEN
+                TRY_TO_DATE(A.ESTIMATEDSHIPDATE, 'DD-MM-YYYY') IS NOT NULL
+                AND TRY_TO_DATE(A.SCHEDULEDDATE, 'DD-MM-YYYY') IS NULL
+                THEN DATEADD(
+                    'DAY',
+                    COALESCE(C.LEADTIME, 0),
+                    TRY_TO_DATE(A.ESTIMATEDSHIPDATE, 'DD-MM-YYYY')
+                )
+            ELSE TRY_TO_DATE(A.SCHEDULEDDATE, 'DD-MM-YYYY')
+        END AS SCHEDULEDDATE,
+        TRY_TO_DATE(A.ARRIVALDATE, 'DD-MM-YYYY') AS ARRIVALDATE,
+        CASE
+            WHEN
+                TRY_TO_DATE(A.ESTIMATEDSHIPDATE, 'DD-MM-YYYY') IS NOT NULL
+                AND TRY_TO_DATE(A.ESTIMATEDDELIVERYDATE, 'DD-MM-YYYY') IS NULL
+                THEN DATEADD(
+                    'DAY',
+                    COALESCE(C.LEADTIME, 0),
+                    TRY_TO_DATE(A.ESTIMATEDSHIPDATE, 'DD-MM-YYYY')
+                )
+            ELSE TRY_TO_DATE(A.ESTIMATEDDELIVERYDATE, 'DD-MM-YYYY')
+        END AS ESTIMATEDDELIVERYDATE,
+        TRY_TO_DATE(A.ACTUALDELIVERYDATE, 'DD-MM-YYYY HH:MI:SS')
+            AS ACTUALDELIVERYDATE,
+        CASE
+            WHEN
+                TRY_TO_DATE(A.ACTUALSHIPDATE, 'DD-MM-YYYY HH:MI:SS') IS NOT NULL
+                AND TRY_TO_DATE(A.ACTUALDELIVERYDATE, 'DD-MM-YYYY HH:MI:SS') IS NULL --noqa
+                THEN DATEADD(
+                    'DAY',
+                    COALESCE(C.LEADTIME, 0),
+                    TRY_TO_DATE(A.ACTUALSHIPDATE, 'DD-MM-YYYY HH:MI:SS')
+                )
+            ELSE TRY_TO_DATE(A.ACTUALDELIVERYDATE, 'DD-MM-YYYY HH:MI:SS')
+        END AS NEWACTUALDELIVERYDATE,
+        TRY_TO_DATE(A.LOADAPPLICATIONDATE, 'DD-MM-YYYY') AS LOADAPPLICATIONDATE,
+        COALESCE(A.PLANNEDCOST, 0) AS PLANNEDCOST,
+        COALESCE(A.ACTUALCOST, 0) AS ACTUALCOST,
+        COALESCE(A.PENALTYCOST, 0) AS PENALTYCOST,
+        COALESCE(A.QUANTITY, 0) AS QUANTITY,
+        COALESCE(A.QUALITY_ADJUSTMENT, 0) AS QUALITYADJUSTMENT
+    FROM {{ ref('shipment_details_master') }} AS A
+    INNER JOIN SHIPMENTLINEID_CREATOR AS D
+        ON
+            A.ID = D.ID
+            AND A.LOADNUMBER = D.CTMSLOADNUMBER
+    LEFT JOIN ITEMLANE_MASTER AS C
+        ON
+            A.LANEID = C.BODLANEID
+            AND A.ITEMID = C.ITEM
+)
+
+SELECT
+    *,
+    HASH(*) AS SHIP_HASH_ID
+FROM INTSTG_SHIP

@@ -1,0 +1,48 @@
+name: 'mef_dct_project'
+
+config-version: 2
+version: '0.1'
+
+profile: 'mef_dct_project'
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+analysis-paths: ["analysis"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+    - "target"
+    - "dbt_modules"
+    - "logs"
+
+require-dbt-version: [">=1.0.0", "<2.0.0"]
+
+# Define variables used in the project
+vars:
+    # Materialization type of mart models
+    mat: incremental
+    # Type of execution
+    exec: delta
+    # Incremental materialization strategy
+    mat_inc_strat: delete+insert
+    # Schedules of incremental models
+    dbt_run_schedule:
+        delta_execution: [9, 11, 13, 15, 18, 19, 20, 22]
+        delta_onhands: [9, 10, 11, 12, 13, 15]
+        delta_vessel: [15, 17]
+        delta_full: [3]
+
+# Define configuration of models
+# models:
+#   mef_dct_project:
+#     # Master Data
+#     master_data:
+#       mart:
+#         customer:
+#           +materialized: table
+#           +incremental_strategy: delete+insert
+#         item:
+#           +materialized: table
+#           +incremental_strategy: delete+insert

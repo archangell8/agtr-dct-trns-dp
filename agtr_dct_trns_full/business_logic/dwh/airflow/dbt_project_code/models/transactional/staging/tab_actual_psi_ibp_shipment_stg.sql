@@ -1,0 +1,124 @@
+-- noqa: disable=RF06,ST09
+{{
+    config(
+        materialized='table'
+    )
+}}
+
+WITH
+ACTUAL_PSI_IBP_SHIP_PART01 AS (
+    SELECT DISTINCT
+        A.OPERATION_TYPE,
+        A.LOAD_NUMBER,
+        A.PRODUCT_CODE AS ITEM,
+        'N/A' AS RESOURCEID,
+        A.BRANCH_PLANT_SOURCE AS BP_ID,
+        'N/A' AS CUSTOMERID,
+        A.TIPO_LOAD AS TIPO_PEDIDO_VENDA,
+        A.TIPO_FRETE,
+        CONV.UOMFROM AS UOM,
+        MONTH(A.LOAD_CONFIRMATION_DATE) AS MES,
+        CASE
+            WHEN A.TIPO_LOAD = 'S8' THEN 'EXTERNALMARKETSHIPPEDVOLUME'
+            ELSE 'INTERNALMARKETSHIPPEDVOLUME'
+        END AS VALUETYPE,
+        -- TO_CHAR(A.LOAD_CONFIRMATION_DATE, 'DD-MM-YYYY') AS "DAY",
+        COALESCE(RDS.DATAHORASAIDA, A.LOAD_CONFIRMATION_DATE) AS "DAY",
+        (
+            --COALESCE(A.TRANSPORTED_VOLUME, A.INVOICE_VOLUME)
+            A.INVOICE_VOLUME
+            /
+            COALESCE(CONV.SUPPLYPLANNINGFINALCONVERSIONFACTOR, 1)
+        ) AS VALUEINPUT_INVOICE_VOLUME
+    FROM {{ ref('tab_shipment_loads_faturados_jde_stg') }} AS A
+    INNER JOIN {{ ref('item_master') }} AS B
+        ON
+            A.PRODUCT_CODE = B.ITEM
+            AND B.ITEMSTAGE != 'GRAOS'
+    LEFT JOIN {{ ref('uom_conversion_master') }} AS CONV
+        ON
+            B.ITEM = CONV.ITEM
+            AND A.UM_PRODUCT = CONV.UOMTO
+    LEFT JOIN {{ source('rds', 'VW_RDS_HISTORIC_DCT') }} AS RDS
+        ON
+            RDS.LOADE1 = A.LOAD_NUMBER
+            AND RDS.IDPASSO = 'FINALIZADO'
+            AND RDS.IDOPERACAOFINALIDADE = 'EXPEDICAO'
+    WHERE
+        1 = 1
+        -- AND MONTH(SCHEDULED_LOAD_DATE) = 6
+        AND A.TIPO_LOAD NOT IN ('VR')
+        AND A.LOAD_CONFIRMATION_DATE >= '2025-01-01'
+        AND A.LOAD_STATUS_CODE != '98'
+),
+
+ACTUAL_PSI_IBP_SHIP_PART02 AS (
+    SELECT -- noqa
+        PSI.ITEM,
+        PSI.RESOURCEID,
+        LOC.LOCATION_UNIT_ID AS "LOCATION",
+        PSI.CUSTOMERID,
+        -- PSI.DAY,
+        CASE
+            /*
+                *** PARA O PRIMEIRO DIA DO MÊS:
+                CASE A COLUNA DAY_ STEJA ENTRE O HR_BEGIN_ONHANDS DO DIA 01
+                ATÉ O HR_BEGIN_ONHANDS + 23:59:59 DO DIA 02
+                CONSIDERAR A PROPRIA COLUNA DAY_
+            */
+            WHEN (
+                DATE_PART(DAY, PSI.DAY) = 1
+                AND PSI.DAY BETWEEN
+                    TIMESTAMP_FROM_PARTS(DATEADD(DAY, 0, TO_DATE(PSI.DAY)), TO_TIME(CONCAT(LOC_AGG.HR_BEGIN_ONHANDS, ':00'))) -- noqa
+                    AND TIMESTAMP_FROM_PARTS(DATEADD(DAY, 1, TO_DATE(PSI.DAY)), DATEADD(SECOND, 86399, TO_TIME(CONCAT(LOC_AGG.HR_BEGIN_ONHANDS, ':00')))) -- noqa
+            ) THEN TO_CHAR(PSI.DAY, 'DD-MM-YYYY')
+            /*
+                *** PARA O ÚLTIMO DIA DO MÊS:
+                CASO A COLUNA DAY ESTEJA O HR_BEGIN_ONHANDS DO ULTIMO DIA
+                ATÉ 23:59:59 DO DIA POSTERIOR
+                CONSIDERAR A PROPRIA COLUNA DAY.
+            */
+            WHEN (
+                DATE_PART(DAY, LAST_DAY(PSI.DAY)) = DATE_PART(DAY, PSI.DAY)
+                AND PSI.DAY BETWEEN
+                    TIMESTAMP_FROM_PARTS(DATEADD(DAY, 0, TO_DATE(PSI.DAY)), TO_TIME(CONCAT(LOC_AGG.HR_BEGIN_ONHANDS, ':00'))) -- noqa
+                    AND TIMESTAMP_FROM_PARTS(DATEADD(DAY, 1, TO_DATE(PSI.DAY)), TO_TIME('23:59:59')) -- noqa
+            ) THEN TO_CHAR(PSI.DAY, 'DD-MM-YYYY')
+            /*
+                *** PARA OS DEMAIS DIAS DO MÊS:
+                CASE A COLUNA DAY ESTEJA ENTRE HR_BEGIN_ONHANDS DO DIA ANTERIOR
+                E O HR_BEGIN_ONHANDS + 23:59:59 DO DIA REFERENTE DA COLUNA DAY
+                CONSIDERAR O DIA ANTERIOR DA COLUNA DAY
+            */
+            WHEN (
+                PSI.DAY BETWEEN
+                    TIMESTAMP_FROM_PARTS(DATEADD(DAY, -1, TO_DATE(PSI.DAY)), TO_TIME(CONCAT(LOC_AGG.HR_BEGIN_ONHANDS, ':00'))) -- noqa
+                    AND TIMESTAMP_FROM_PARTS(TO_DATE(PSI.DAY), DATEADD(SECOND, 86399, TO_TIME(CONCAT(LOC_AGG.HR_BEGIN_ONHANDS, ':00')))) -- noqa
+            ) THEN TO_CHAR(DATEADD(DAY, -1, PSI.DAY), 'DD-MM-YYYY')
+            ELSE TO_CHAR(PSI.DAY, 'DD-MM-YYYY')
+        END AS "DAY",
+        PSI.VALUETYPE,
+        PSI.UOM,
+        SUM(PSI.VALUEINPUT_INVOICE_VOLUME) AS VALUEINPUT_INVOICE_VOLUME
+    FROM ACTUAL_PSI_IBP_SHIP_PART01 AS PSI
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS LOC
+        ON PSI.BP_ID = LOC.LOCATIONID
+    LEFT JOIN {{ source('pscfl', 'F_MIN_LOCATION_AGRUPADA') }} AS LOC_AGG
+        ON LOC_AGG.UNIT_ID = LOC.LOCATION_UNIT_ID
+    WHERE
+        LOC.LOCATION_UNIT_STRUCTURE = 'FÁBRICA'
+    GROUP BY -- noqa
+        1, 2, 3, 4, 5, 6, 7
+)
+
+SELECT
+    ITEM,
+    RESOURCEID,
+    "LOCATION",
+    CUSTOMERID,
+    "DAY",
+    VALUETYPE,
+    VALUEINPUT_INVOICE_VOLUME::DECIMAL(20, 3) AS VALUEINPUT,
+    UOM,
+    HASH(*) AS HASH_ID
+FROM ACTUAL_PSI_IBP_SHIP_PART02

@@ -1,0 +1,58 @@
+-- noqa: disable=RF06,ST09
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH
+PSCFL_UDC AS (
+    SELECT
+        CATEGORY,
+        STAGE,
+        SOURCE_CODE,
+        TARGET_CODE,
+        TARGET_NUMBER
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }}
+    WHERE
+        1 = 1
+        AND STATUS = 'ATIVO'
+),
+
+UNLOADING_CAPACITY_STG AS (
+    SELECT
+        UNLOADING."START",
+        UNLOADING.END,
+        UDC.TARGET_CODE AS "LOCATION",
+        UNLOADING.ITEMID,
+        UNLOADING.TRANSMODETYPE,
+        UNLOADING.UOM,
+        UNLOADING.DISTUNLOADINGCAPACITY
+    FROM {{ source('pscfl', 'F_MIN_UNLOADINGCAPACITY_BASE') }} AS UNLOADING
+    INNER JOIN PSCFL_UDC AS UDC
+        ON
+            UDC.CATEGORY = 'CAPACIDADES_LOCATION'
+            AND UDC.STAGE = 'IBP_ASSET_LOCATION'
+            AND UDC.SOURCE_CODE = UNLOADING.LOCATION
+),
+
+FINAL AS (
+    SELECT DISTINCT
+        COALESCE(NULLIF("START", ''), 'N/A') AS STARTDATE,
+        COALESCE(NULLIF("END", ''), 'N/A') AS ENDDATE,
+        COALESCE(NULLIF("LOCATION", ''), 'N/A') AS "LOCATION",
+        COALESCE(NULLIF(ITEMID, ''), 'N/A') AS ITEMID,
+        COALESCE(NULLIF(TRANSMODETYPE, ''), 'N/A') AS TRANSMODETYPE,
+        COALESCE(DISTUNLOADINGCAPACITY, 0) AS DISTUNLOADINGCAPACITY,
+        COALESCE(NULLIF(UOM, ''), 'N/A') AS UOM
+    FROM UNLOADING_CAPACITY_STG
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM FINAL
+WHERE
+    1 = 1
+    AND {{ date_max_filter('STARTDATE','DD-MM-YYYY', 'na') }} --noqa
+    AND {{ date_max_filter('ENDDATE','DD-MM-YYYY', 'na') }} --noqa

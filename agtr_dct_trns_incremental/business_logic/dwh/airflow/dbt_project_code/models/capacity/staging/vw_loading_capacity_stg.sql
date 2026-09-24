@@ -1,0 +1,214 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH
+PSCFL_UDC AS (
+    SELECT
+        CATEGORY,
+        STAGE,
+        SOURCE_CODE,
+        TARGET_CODE,
+        TARGET_NUMBER
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }}
+    WHERE
+        1 = 1
+        AND STATUS = 'ATIVO'
+),
+
+MONTHS AS (
+    SELECT
+        DATE_TRUNC('MONTH', CURRENT_DATE) AS START_DATE,
+        LAST_DAY(CURRENT_DATE) AS END_DATE,
+        DAY(LAST_DAY(CURRENT_DATE)) AS NUMBER_DAYS
+    UNION ALL
+    SELECT
+        DATE_TRUNC('MONTH', DATEADD(MONTH, 1, CURRENT_DATE)) AS START_DATE,
+        LAST_DAY(DATEADD(MONTH, 1, CURRENT_DATE)) AS END_DATE,
+        DAY(LAST_DAY(DATEADD(MONTH, 1, CURRENT_DATE))) AS NUMBER_DAYS
+    UNION ALL
+    SELECT
+        DATE_TRUNC('MONTH', DATEADD(MONTH, 2, CURRENT_DATE)) AS START_DATE,
+        LAST_DAY(DATEADD(MONTH, 2, CURRENT_DATE)) AS END_DATE,
+        DAY(LAST_DAY(DATEADD(MONTH, 2, CURRENT_DATE))) AS NUMBER_DAYS
+),
+
+CONTRACTS_FARMS AS (
+    SELECT DISTINCT S.SOURCE
+    FROM {{ ref('sourcing_contract_details_master') }} AS S
+    INNER JOIN {{ ref('item_master') }} AS I
+        ON S.ITEMID = I.ITEM
+    WHERE
+        1 = 1
+        AND S.TORECEIVETOTAL > 0
+        AND I.ITEMSTAGE = 'GRAOS'
+),
+
+SHIPMENT_VALUES AS (
+    SELECT
+        S.SOURCE,
+        I.ITEMSTAGE,
+        TO_TIMESTAMP(
+            NULLIF(S.ACTUALSHIPDATE, 'N/A'), 'DD-MM-YYYY HH:MI:SS'
+        ) AS ACTUALSHIPDATE,
+        SUM(S.QUANTITY) AS QUANTITY_SHIP
+    FROM {{ ref('shipment_details_master') }} AS S
+    INNER JOIN {{ ref('item_master') }} AS I
+        ON S.ITEMID = I.ITEM
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON S.SOURCE = L.LOCATIONID
+    WHERE
+        1 = 1
+        AND L.LOCATION_UNIT_STRUCTURE = 'PONTO DE COLETA'
+        AND S.QUANTITY <= 3500
+        AND S.ACTUALSHIPDATE != 'N/A'
+        AND NOT EXISTS (
+            SELECT 1
+            FROM {{ ref('shipment_status_quality_details_master') }} AS ST
+            WHERE
+                ST.SHIPMENTID = S.ID
+                AND ST.STATUS = 'CANCELLED'
+        )
+        AND S.OPERATIONTYPE IN ('FOB', 'FBZ')
+        AND YEAR(
+            TO_TIMESTAMP(NULLIF(S.ACTUALSHIPDATE, 'N/A'), 'DD-MM-YYYY HH:MI:SS')
+        ) BETWEEN YEAR(DATEADD('YEAR', -1, DATE_TRUNC('YEAR', CURRENT_DATE())))
+        AND YEAR(DATEADD('YEAR', 1, DATE_TRUNC('YEAR', CURRENT_DATE())))
+    GROUP BY
+        S.SOURCE,
+        I.ITEMSTAGE,
+        TO_TIMESTAMP(NULLIF(S.ACTUALSHIPDATE, 'N/A'), 'DD-MM-YYYY HH:MI:SS')
+),
+
+SHIPMENT_QUARTILE_QUANTITY AS (
+    SELECT
+        SOURCE,
+        ITEMSTAGE,
+        QUANTITY_SHIP,
+        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY QUANTITY_SHIP DESC)
+            OVER (PARTITION BY (SOURCE, ITEMSTAGE)) AS QUARTILE_75
+    FROM SHIPMENT_VALUES
+    WHERE 1 = 1
+),
+
+PURCHASE_CAPACITY AS (
+    SELECT
+        SOURCE,
+        ITEMSTAGE,
+        --aproximate the value to next cent eg.: 538 -> 600
+        CEIL(AVG(QUANTITY_SHIP) / 100) * 100 AS VOL
+    FROM SHIPMENT_QUARTILE_QUANTITY
+    WHERE
+        1 = 1
+        AND QUANTITY_SHIP >= QUARTILE_75
+    GROUP BY
+        SOURCE,
+        ITEMSTAGE
+),
+
+LOADING_CAPACITY_FARMS AS (
+    SELECT
+        M.START_DATE AS "START",
+        M.END_DATE AS "END",
+        'RODO' AS TRANSMODETYPE,
+        'TN' AS UOM,
+        COALESCE(F.SOURCE, C.SOURCE) AS "LOCATION",
+        COALESCE(F.ITEMSTAGE, 'GRAOS') AS ITEMID,
+        COALESCE(
+            M.NUMBER_DAYS * F.VOL,
+            350 * M.NUMBER_DAYS
+        ) AS DISTLOADINGCAPACITY
+    FROM CONTRACTS_FARMS AS C
+    LEFT JOIN PURCHASE_CAPACITY AS F
+        ON C.SOURCE = F.SOURCE
+    JOIN MONTHS AS M --noqa
+),
+
+LOADING_CAPACITY_BPS AS (
+    SELECT
+        LOADING."START",
+        LOADING.END,
+        UDC.TARGET_CODE AS "LOCATION",
+        LOADING.ITEMID,
+        LOADING.TRANSMODETYPE,
+        LOADING.UOM,
+        LOADING.DISTLOADINGCAPACITY
+    FROM {{ source('pscfl', 'F_MIN_LOADINGCAPACITY_BASE') }} AS LOADING
+    INNER JOIN PSCFL_UDC AS UDC
+        ON
+            UDC.CATEGORY = 'CAPACIDADES_LOCATION'
+            AND UDC.STAGE = 'IBP_ASSET_LOCATION'
+            AND LOADING.LOCATION = UDC.SOURCE_CODE
+    WHERE
+        1 = 1
+),
+
+LOADING_CAPACITY_TEMP AS (
+    SELECT DISTINCT
+        TO_CHAR("START", 'DD-MM-YYYY') AS "START",
+        TO_CHAR("END", 'DD-MM-YYYY') AS "END",
+        "LOCATION",
+        ITEMID,
+        TRANSMODETYPE,
+        DISTLOADINGCAPACITY::DECIMAL(20, 3) AS DISTLOADINGCAPACITY,
+        UOM
+    FROM LOADING_CAPACITY_FARMS
+
+    UNION ALL
+
+    SELECT DISTINCT
+        "START",
+        "END",
+        "LOCATION",
+        ITEMID,
+        TRANSMODETYPE,
+        DISTLOADINGCAPACITY::DECIMAL(20, 3) AS DISTLOADINGCAPACITY,
+        UOM
+    FROM LOADING_CAPACITY_BPS
+),
+
+LOADING_CAPACITY_FINAL AS (
+    SELECT
+        CAPY."START",
+        CAPY.END,
+        CAPY.LOCATION,
+        CAPY.ITEMID,
+        CAPY.TRANSMODETYPE,
+        CAPY.UOM,
+        CASE
+            WHEN LOC.LOCATION_UNIT_STRUCTURE IN ('TRANSBORDO', 'PORTO FLUVIAL')
+                THEN 999999
+            ELSE
+                CAPY.DISTLOADINGCAPACITY
+        END AS DISTLOADINGCAPACITY
+    FROM LOADING_CAPACITY_TEMP AS CAPY
+    INNER JOIN {{ ref('location_master') }} AS LOC
+        ON CAPY.LOCATION = LOC.LOCATIONID
+),
+
+FINAL AS (
+    SELECT
+        COALESCE(NULLIF("START", ''), 'N/A') AS STARTDATE,
+        COALESCE(NULLIF("END", ''), 'N/A') AS ENDDATE,
+        COALESCE(NULLIF("LOCATION", ''), 'N/A') AS "LOCATION",
+        COALESCE(NULLIF(ITEMID, ''), 'N/A') AS ITEMID,
+        COALESCE(NULLIF(TRANSMODETYPE, ''), 'N/A') AS TRANSMODETYPE,
+        COALESCE(
+            DISTLOADINGCAPACITY,
+            0.00
+        ) AS DISTLOADINGCAPACITY,
+        COALESCE(NULLIF(UOM, ''), 'N/A') AS UOM
+    FROM LOADING_CAPACITY_FINAL
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM FINAL
+WHERE
+    1 = 1
+    AND {{ date_max_filter('STARTDATE','DD-MM-YYYY', 'na') }} --noqa
+    AND {{ date_max_filter('ENDDATE','DD-MM-YYYY', 'na') }} --noqa

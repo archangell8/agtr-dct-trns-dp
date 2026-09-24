@@ -1,0 +1,9 @@
+~$*
+.vscode/*
+*/logs/
+*/target/
+logs
+venv/
+*/dbt_packages/
+*/dbt_project_code/seeds/*.csv
+.sqlfluff

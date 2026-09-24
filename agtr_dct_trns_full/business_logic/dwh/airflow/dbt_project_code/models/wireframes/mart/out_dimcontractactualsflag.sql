@@ -1,0 +1,113 @@
+--noqa:disable=RF06
+{{
+    config(
+        materialized='table',
+        tags=['wf38a_recflag']
+    )
+}}
+
+WITH
+TRF_CONTRACT_FLAG AS (
+    SELECT
+        'TRF' AS FLAG_RULE,
+        CONCAT('TRF-', B.LOCATION_NAME) AS CONTRACTID,
+        MIN(A.ACTUALSHIPDATE) AS MIN_ACTUALSHIPDATE
+    FROM {{ ref('intstg_shipment_details_changed') }} AS A
+    INNER JOIN {{ ref('location_master') }} AS B
+        ON A.SOURCELOCATION = B.LOCATIONID
+    INNER JOIN {{ ref('item_master') }} AS C
+        ON A.ITEM = C.ITEM
+    WHERE
+        A.OPERATIONTYPE = 'TRF'
+        AND B.LOCATION_UNIT_STRUCTURE NOT IN ('PORTO FLUVIAL', 'TRANSBORDO')
+        AND C.L3 = 'INBOUND'
+        AND A.SALESORDERDELIVERYID = 'N/A'
+        AND A.ACTUALSHIPDATE IS NOT NULL
+        AND A.CHANGED_FLAG = 1
+    GROUP BY
+        CONCAT('TRF-', B.LOCATION_NAME)
+),
+
+SC_CONTRACT_FLAG AS (
+    SELECT
+        'SOURCING CONTRACT' AS FLAG_RULE,
+        TRIM(SPLIT_PART(A.SOURCINGCONTRACTNUMBER, '-', 2)) AS CONTRACTID,
+        MIN(A.ACTUALSHIPDATE) AS MIN_ACTUALSHIPDATE
+    FROM {{ ref('intstg_shipment_details_changed') }} AS A
+    WHERE
+        A.ACTUALSHIPDATE IS NOT NULL
+        AND A.SOURCINGCONTRACTNUMBER != 'N/A'
+        AND A.CHANGED_FLAG = 1
+    GROUP BY
+        TRIM(SPLIT_PART(A.SOURCINGCONTRACTNUMBER, '-', 2))
+),
+
+VENDAS_CONTRACT_FLAG AS (
+    SELECT
+        'VENDAS' AS FLAG_RULE,
+        CONCAT('VENDAS-', A.SALESORDERDELIVERYID) AS CONTRACTID,
+        MIN(A.ACTUALSHIPDATE) AS MIN_ACTUALSHIPDATE
+    FROM {{ ref('intstg_shipment_details_changed') }} AS A
+    INNER JOIN {{ ref('location_master') }} AS B
+        ON A.SOURCELOCATION = B.LOCATIONID
+    INNER JOIN {{ ref('item_master') }} AS C
+        ON A.ITEM = C.ITEM
+    WHERE
+        A.OPERATIONTYPE = 'VEN'
+        AND C.L3 = 'INBOUND'
+        AND A.SOURCINGCONTRACTNUMBER = 'N/A'
+        AND A.ACTUALSHIPDATE IS NOT NULL
+        AND A.CHANGED_FLAG = 1
+    GROUP BY
+        CONCAT('VENDAS-', A.SALESORDERDELIVERYID)
+
+    UNION ALL
+
+    SELECT
+        'VENDAS' AS FLAG_RULE,
+        CONCAT('VENDAS-', A.SALESORDERDELIVERYID, '-AUT') AS CONTRACTID,
+        MIN(A.ACTUALSHIPDATE) AS MIN_ACTUALSHIPDATE
+    FROM {{ ref('intstg_shipment_details_changed') }} AS A
+    INNER JOIN {{ ref('location_master') }} AS B
+        ON A.SOURCELOCATION = B.LOCATIONID
+    INNER JOIN {{ ref('item_master') }} AS C
+        ON A.ITEM = C.ITEM
+    WHERE
+        A.OPERATIONTYPE = 'VEN'
+        AND C.L3 = 'INBOUND'
+        AND A.SOURCINGCONTRACTNUMBER = 'N/A'
+        AND A.ACTUALSHIPDATE IS NOT NULL
+        AND A.CHANGED_FLAG = 1
+    GROUP BY
+        CONCAT('VENDAS-', A.SALESORDERDELIVERYID, '-AUT')
+),
+
+INTSTG_FLAGCONTRACT AS (
+    SELECT
+        CONTRACTID,
+        MIN_ACTUALSHIPDATE,
+        FLAG_RULE
+    FROM TRF_CONTRACT_FLAG
+
+    UNION ALL
+
+    SELECT
+        CONTRACTID,
+        MIN_ACTUALSHIPDATE,
+        FLAG_RULE
+    FROM SC_CONTRACT_FLAG
+
+    UNION ALL
+
+    SELECT
+        CONTRACTID,
+        MIN_ACTUALSHIPDATE,
+        FLAG_RULE
+    FROM VENDAS_CONTRACT_FLAG
+)
+
+SELECT DISTINCT
+    CONTRACTID,
+    'TRUE' AS RECALCULATE_ACTUALS_FLAG,
+    HASH(*) AS HASH_ID
+FROM INTSTG_FLAGCONTRACT

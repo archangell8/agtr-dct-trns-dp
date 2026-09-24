@@ -1,0 +1,9 @@
+# manifest.yaml is mandatory name
+
+# --- header ---
+data_product_package_version: 0.0.1 # version of data product package itself including manifest file structure
+intake_id: a123456
+
+business_logic:
+  # <resource_name>: <path to a yaml file with resource definition>
+  dwh_port_airflow_dag: business_logic/dwh/airflow/minerva.yml

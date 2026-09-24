@@ -1,0 +1,87 @@
+-- noqa: disable=RF06,ST09
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH
+PSCFL_UDC AS (
+    SELECT
+        CATEGORY,
+        STAGE,
+        SOURCE_CODE,
+        TARGET_CODE,
+        TARGET_NUMBER
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }}
+    WHERE
+        1 = 1
+        AND STATUS = 'ATIVO'
+),
+
+LOCATION_STORAGE_CAPACITY_STG AS (
+    SELECT
+        UDC.TARGET_CODE AS "LOCATION",
+        LOC_STORAGE.MONTH,
+        ITEM.TARGET_CODE AS ITEMID,
+        LOC_STORAGE.UOM,
+        LOC_STORAGE.MAXCAPACITY,
+        (CASE
+            WHEN
+                LOC.LOCATION_UNIT_STRUCTURE = 'FÁBRICA'
+                AND ITEM.TARGET_CODE = 'GRAOS'
+                THEN 10000
+            ELSE
+                LOC_STORAGE.MINCAPACITY
+        END)::DECIMAL(20, 3) AS MINCAPACITY
+    FROM
+        {{ source('pscfl', 'F_MIN_LOCATIONSTORAGECAPACITY_BASE') }}
+            AS LOC_STORAGE
+    INNER JOIN PSCFL_UDC AS UDC
+        ON
+            UDC.CATEGORY = 'CAPACIDADES_LOCATION'
+            AND UDC.STAGE = 'IBP_ASSET_LOCATION'
+            AND UDC.SOURCE_CODE = LOC_STORAGE.LOCATIONID
+    INNER JOIN PSCFL_UDC AS ITEM
+        ON
+            ITEM.CATEGORY = 'CAPACIDADES_LOCATION'
+            AND ITEM.STAGE = 'ITEM_CAPACITY_ITEM_L1'
+            AND ITEM.SOURCE_CODE = LOC_STORAGE.ITEMID
+    INNER JOIN {{ ref('location_master') }} AS LOC
+        ON UDC.TARGET_CODE = LOC.LOCATIONID
+),
+
+LOCATION_STORAGE_CAPACITY AS (
+    SELECT
+        LOCATION,
+        MONTH,
+        ITEMID,
+        UOM,
+        SUM(MAXCAPACITY) AS MAXCAPACITY,
+        SUM(MINCAPACITY) AS MINCAPACITY
+    FROM LOCATION_STORAGE_CAPACITY_STG
+    GROUP BY
+        LOCATION,
+        MONTH,
+        ITEMID,
+        UOM
+),
+
+FINAL AS (
+    SELECT DISTINCT
+        COALESCE(NULLIF("LOCATION", ''), 'N/A') AS LOCATIONID,
+        COALESCE(NULLIF("MONTH", ''), 'N/A') AS "MONTH",
+        COALESCE(NULLIF(ITEMID, ''), 'N/A') AS ITEMID,
+        COALESCE(MAXCAPACITY, 0) AS MAXCAPACITY,
+        COALESCE(MINCAPACITY, 0) AS MINCAPACITY,
+        COALESCE(NULLIF(UOM, ''), 'N/A') AS UOM
+    FROM LOCATION_STORAGE_CAPACITY
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM FINAL
+WHERE
+    1 = 1
+    AND {{ date_max_filter('MONTH','MM-YYYY', 'na') }} --noqa

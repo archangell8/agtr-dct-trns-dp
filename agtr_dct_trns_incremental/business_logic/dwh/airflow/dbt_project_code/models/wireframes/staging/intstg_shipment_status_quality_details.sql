@@ -1,0 +1,41 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='table',
+        tags=['wf16']
+    )
+}}
+
+WITH
+SHIPMENTSTATUSQUALITYDETAILS AS (
+    SELECT DISTINCT
+        A.SHIPMENTID AS ID,
+        C.ITEM,
+        C.SHIPMENTLINEID,
+        C.SOURCELOCATION,
+        C.DESTINATIONLOCATION,
+        A.STATUS,
+        A.STATUSREFERENCEDATE AS STATUSDATE,
+        A.STATUSQUALITYREFERENCEDATE AS QUALITYMEASUREDATE,
+        C.QUANTITY AS SHIPMENTQTY,
+        A.MEASURE AS QUALITYMEASURE,
+        A.VALUE AS QUALITYVALUE,
+        A.UNIT AS QUALITYUNIT,
+        COALESCE(A.QUANTITY, C.QUANTITY) AS STATUSQUANTITY,
+        CASE A.STATUS
+            WHEN 'LOADING ORDER' THEN 1
+            WHEN 'IN SOURCE' THEN 2
+            WHEN 'INVOICE' THEN 3
+            WHEN 'IN DESTINATION' THEN 4
+            WHEN 'FINISHED' THEN 5
+            WHEN 'UNLOADED' THEN 6
+            WHEN 'CANCELLED' THEN 7
+            ELSE 0
+        END AS STATUSORDER
+    FROM {{ ref('shipment_status_quality_details_master') }} AS A
+    INNER JOIN {{ ref('intstg_shipment_details') }} AS C
+        ON A.SHIPMENTID = C.ID
+)
+
+SELECT *
+FROM SHIPMENTSTATUSQUALITYDETAILS

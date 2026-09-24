@@ -1,0 +1,588 @@
+version: 2
+
+models:
+  - name: customer
+    description: >
+      The Customer model is part of the master data category and stores Cargill customer
+      registration data, such as Domestic Market Customers, Ports, Terminals and CFB Factories.
+
+    columns:
+    - name: customerid
+      description: Company code principal
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: taxid
+      description: Employer Identification Number
+      data_type: string
+
+    - name: name
+      description: Description name
+      data_type: string
+
+    - name: status
+      description: JDE Status
+      data_type: string
+
+    - name: address
+      description: Registered address
+      data_type: string
+
+    - name: complement
+      description: Registered address complement
+      data_type: string
+
+    - name: neighborhood
+      description: Registered neighborhood
+      data_type: string
+
+    - name: zipcode
+      description: Registered ZIP code of the address
+      data_type: string
+
+    - name: city
+      description: Registered city
+      data_type: string
+
+    - name: state
+      description: Registered State/UF
+      data_type: string
+
+    - name: country
+      description: Registered country (Default is Brazil)
+      data_type: string
+
+    - name: market
+      description: Customer market type
+      data_type: string
+
+    - name: territory
+      description: Customer territory
+      data_type: string
+
+    - name: segmentation
+      description: Customer segmentation
+      data_type: string
+
+    - name: customergroup
+      description: Customer group
+      data_type: string
+
+    - name: customergroupdescription
+      description: Customer group description
+      data_type: string
+
+    - name: creditblocked
+      description: Checks if the client has credit blocking
+      data_type: boolean
+
+    - name: hash_id
+      description: Hash of row
+      data_type: int
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: item
+    description: >
+      The Item model is part of the master data category and stores data of products
+      covering attributes such as code, name, description, type, category, etc.
+
+    columns:
+    - name: item
+      description: Item number
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: itemname
+      description: Item name
+      data_type: string
+
+    - name: itemstatus
+      description: Item status
+      data_type: string
+
+    - name: itemclass
+      description: Item class
+      data_type: string
+
+    - name: itemstage
+      description: Item stage
+      data_type: string
+
+    - name: item_type
+      description: Item type
+      data_type: string
+
+    - name: l1
+      description: L1
+      data_type: string
+
+    - name: l2
+      description: L2
+      data_type: string
+
+    - name: l3
+      description: L3
+      data_type: string
+
+    - name: baseuom
+      description: UOM type
+      data_type: string
+
+    - name: baseuomdescription
+      description: UOM description
+      data_type: string
+
+    - name: resource
+      description: To be used for outbound
+      data_type: string
+
+    - name: containersize
+      description: To be used for outbound
+      data_type: string
+
+    - name: packagesize
+      description: To be used for outbound
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: int
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: lane
+    description: >
+      The Lane model is part of the master data category to capture and manage transportation
+      lanes and legs, their internal codes, source and destination and descriptive information.
+
+    columns:
+    - name: laneid
+      description: The code of leg.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: location_from
+      description: The Source of the leg, and for cargill asset we use the Unit_ID and to pickup point.
+      data_type: string
+
+    - name: location_to
+      description: The destination of the leg, always used as Unit_ID.
+      data_type: string
+
+    - name: transmode
+      description: Stores the internal code representing the transportation mode.
+      data_type: string
+
+    - name: modal
+      description: A human-readable label for the transportation mode.
+      data_type: string
+
+    - name: lane_description
+      description: A descriptive name of the Lane.
+      data_type: string
+
+    - name: location_from_unit_structure
+      description: To do the description.
+      data_type: string
+
+    - name: location_to_unit_structure
+      description: To do the description.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: int
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: itemlanetransmode
+    description: >
+      The ItemLaneTransMode model is part of the master data category and is designed to
+      capture and manage transportation lanes and legs, their internal codes, transmode,
+      modal,  wich product the lane can load, the lead time and the lot size min.
+
+    columns:
+    - name: bodlaneid
+      description: The code of the leg.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: transmode
+      description: The internal code representing the transportation mode. It consists of three alphabetic characters.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: itemid
+      description: The SKU Code of the item just to Inbound products.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: leadtime
+      description: Minimum lot for load composition in Tons.
+      data_type: int
+
+    - name: lotsizemin
+      description: Standard time to complete delivery in Business days.
+      data_type: int
+
+    - name: hash_id
+      description: Hash of row
+      data_type: int
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: location
+    description: >
+      The Location model is part of the master data category and is related to the registration of
+      Cargill locations, such as Warehouses, Offices, Factories, Collection Points (farms or Farmers),
+      River Ports, Sea Ports and Transshipments. This entity will only be used to send data to o9.
+
+    columns:
+    - name: locationid
+      description: Code of the physical BP location in the JDE or the Address Number in the case of a "Collection Point".
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: location_unit_structure
+      description: Structure type.
+      data_type: string
+
+    - name: location_group
+      description: Group to which the location belongs.
+      data_type: string
+
+    - name: location_country
+      description: Country to which the location belongs.
+      data_type: string
+
+    - name: location_region
+      description: Region in which the location belongs.
+      data_type: string
+
+    - name: location_sub_region
+      description: Sub-Region used by the logistics team, available in the JDE to which the location belongs.
+      data_type: string
+
+    - name: location_name
+      description: Location name based on location_unit_id for BPs.
+      data_type: string
+
+    - name: location_code
+      description: Location code used by the IBP team and also for purchase contracts at JDE.
+      data_type: string
+
+    - name: isactive
+      description: Validates whether the Location is active or inactive on the source system.
+      data_type: string
+
+    - name: routingcomments
+      description: To do the description.
+      data_type: string
+
+    - name: restriction
+      description: To do the description.
+      data_type: string
+
+    - name: zip
+      description: ZIP code of the location.
+      data_type: string
+
+    - name: address
+      description: Full address of the location.
+      data_type: string
+
+    - name: city
+      description: City of location.
+      data_type: string
+
+    - name: longitude
+      description: Longitude of the location.
+      data_type: string
+
+    - name: latitude
+      description: Latitude of the location.
+      data_type: string
+
+    - name: state
+      description: State/UF of the location.
+      data_type: string
+
+    - name: location_ownership
+      description: Responsible for the location.
+      data_type: string
+
+    - name: operator
+      description: Transshipment operator, available for transfers only.
+      data_type: string
+
+    - name: location_ibp_asset
+      description: Name of the location in the IBP process.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: int
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: supplier
+    description: >
+      The Supplier model is part of the master data category and is related to the SalesForce Origination Grain
+      customer list together with other data from JDE to complete the registration.
+
+    columns:
+    - name: supplierid
+      description: Company code principal.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: taxid
+      description: Employer Identification Number.
+      data_type: string
+
+    - name: name
+      description: Description name.
+      data_type: string
+
+    - name: status
+      description: JDE Status.
+      data_type: string
+
+    - name: address
+      description: Registered address.
+      data_type: string
+
+    - name: complement
+      description: Registered address complement.
+      data_type: string
+
+    - name: neighborhood
+      description: Registered neighborhood.
+      data_type: string
+
+    - name: zipcode
+      description: Registered ZIP code of the address.
+      data_type: string
+
+    - name: city
+      description: Registered city.
+      data_type: string
+
+    - name: state
+      description: Registered State/UF.
+      data_type: string
+
+    - name: country
+      description: Registered country (Default is Brazil).
+      data_type: string
+
+    - name: market
+      description: Supplier market type.
+      data_type: string
+
+    - name: territory
+      description: Supplier territory.
+      data_type: string
+
+    - name: segmentation
+      description: Supplier segmentation.
+      data_type: string
+
+    - name: suppliergroup
+      description: Supplier group.
+      data_type: string
+
+    - name: suppliergroupdescription
+      description: Supplier group description.
+      data_type: string
+
+    - name: creditblocked
+      description: Checks if the client has credit blocking
+      data_type: boolean
+
+    - name: hash_id
+      description: Hash of row
+      data_type: int
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: transmode
+    description: >
+      The Transmode model is part of the master data category and is related to the mapping attributes that use
+      Modal/Transmode. The entity is designed to capture and manage transportation modes, their internal codes
+      and descriptive information.
+
+    columns:
+    - name: transmode
+      description: Internal code representing the transportation mode.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: transmodedescription
+      description: A descriptive name of the transportation mode, providing more detailed information.
+      data_type: string
+
+    - name: transmodetype
+      description: A human-readable label for the transportation mode.
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: int
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string
+
+  - name: location_bp
+    description: >
+      To do the description.
+
+    columns:
+    - name: bp_number
+      description: To do the description.
+      data_type: string
+      # tests:
+      #   - not_null
+
+    - name: bp_name
+      description: To do the description
+      data_type: string
+
+    - name: origin_subregion
+      description: To do the description
+      data_type: string
+
+    - name: origin_unit_name
+      description: To do the description
+      data_type: string
+
+    - name: origin_unit_id
+      description: To do the description
+      data_type: string
+
+    - name: destination_unit_name
+      description: To do the description
+      data_type: string
+
+    - name: destination_unit_id
+      description: To do the description
+      data_type: string
+
+    - name: destination_ibge_id
+      description: To do the description
+      data_type: string
+
+    - name: address_book
+      description: To do the description
+      data_type: string
+
+    - name: location_code
+      description: To do the description
+      data_type: string
+
+    - name: status
+      description: To do the description
+      data_type: string
+
+    - name: location_type
+      description: To do the description
+      data_type: string
+
+    - name: origin_filial_expense
+      description: To do the description
+      data_type: string
+
+    - name: hash_id
+      description: Hash of row
+      data_type: int
+
+    - name: cdp_transaction
+      description: Flag with the last transaction of the record
+      data_type: string
+
+    - name: cdp_timestamp_full
+      description: Timestamp that the row was created or updated in full load.
+      data_type: string
+
+    - name: cdp_timestamp_inc
+      description: Timestamp that the row was created or updated in incremental load.
+      data_type: string

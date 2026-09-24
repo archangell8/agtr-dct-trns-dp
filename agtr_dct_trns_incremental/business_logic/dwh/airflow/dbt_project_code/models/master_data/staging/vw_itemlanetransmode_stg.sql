@@ -1,0 +1,90 @@
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH
+ISLANE_OPTIMIZABLE_TEMP_CTE AS (
+    SELECT DISTINCT
+        I.BODLANEID,
+        I.ITEMID,
+        I.ISLANE_OPTIMIZABLE
+    FROM {{ ref('tab_itemlane_distribution_stg') }} AS I
+    WHERE
+        1 = 1
+        --AND TO_DATE(I.MONTH, 'MM-YYYY') = TRUNC(CURRENT_DATE(), 'MONTH')
+),
+
+ISLANE_OPTIMIZABLE_CTE AS (
+    SELECT
+        BODLANEID,
+        ITEMID,
+        IFF(
+            COUNT(ISLANE_OPTIMIZABLE) = 2,
+            'FALSE',
+            MAX(ISLANE_OPTIMIZABLE)
+        ) AS ISLANE_OPTIMIZABLE
+    FROM ISLANE_OPTIMIZABLE_TEMP_CTE
+    GROUP BY
+        BODLANEID,
+        ITEMID
+),
+
+ISLANE_OPTIMIZABLE_CMM AS (
+    SELECT DISTINCT CONCAT(SOURCE, '-', DESTINATION, '-ROD') AS LANEID
+    FROM {{ ref('transportation_schedule_master') }}
+    WHERE
+        TO_DATE(DATE, 'DD-MM-YYYY') >= CURRENT_DATE()
+),
+
+ISLANE_OPTIMIZABLE_CONTRATO AS (
+    SELECT DISTINCT
+        CONCAT(
+            SC.SOURCE,
+            '-',
+            IFF(SC.TRANSMODE = 'ROD', L_D.LOCATIONID, L_T.LOCATIONID),
+            '-ROD'
+        ) AS LANEID
+    FROM {{ ref('sourcing_contract_details_master') }} AS SC
+    LEFT JOIN {{ ref('location_master') }} AS L_T
+        ON SC.TRANSMODE = L_T.LOCATION_CODE
+    LEFT JOIN {{ ref('location_master') }} AS L_D
+        ON SC.DESTINATION = L_D.LOCATION_CODE
+    WHERE
+        SC.TORECEIVEFLAT > 0
+        AND SC.STATUS = 'Active'
+),
+
+ISLANE_OPTIMIZABLE_PONTOCOLETA AS (
+    SELECT LANEID FROM ISLANE_OPTIMIZABLE_CMM
+    UNION DISTINCT
+    SELECT LANEID FROM ISLANE_OPTIMIZABLE_CONTRATO
+),
+
+ITEM_LANE_TRANSMODE AS (
+    SELECT DISTINCT
+        ITEMLANE_DISTR.BODLANEID,
+        ITEMLANE_DISTR.TRANSMODE,
+        ITEMLANE_DISTR.ITEMID,
+        ITEMLANE_DISTR.LEADTIME,
+        ITEMLANE_DISTR.LOTSIZEMIN,
+        CASE
+            WHEN PC_OPT.LANEID IS NOT NULL
+                THEN 'TRUE'
+            ELSE
+                COALESCE(OPT_CTE.ISLANE_OPTIMIZABLE, 'FALSE')
+        END AS ISLANE_OPTIMIZABLE
+    FROM {{ ref('tab_itemlane_distribution_stg') }} AS ITEMLANE_DISTR
+    LEFT JOIN ISLANE_OPTIMIZABLE_CTE AS OPT_CTE
+        ON
+            ITEMLANE_DISTR.BODLANEID = OPT_CTE.BODLANEID
+            AND ITEMLANE_DISTR.ITEMID = OPT_CTE.ITEMID
+    LEFT JOIN ISLANE_OPTIMIZABLE_PONTOCOLETA AS PC_OPT
+        ON ITEMLANE_DISTR.BODLANEID = PC_OPT.LANEID
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM ITEM_LANE_TRANSMODE

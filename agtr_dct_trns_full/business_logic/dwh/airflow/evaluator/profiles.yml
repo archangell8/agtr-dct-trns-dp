@@ -1,0 +1,49 @@
+mef_dct_project:
+  outputs:
+    dev:
+      type: snowflake
+      account: cargill-dev
+      user: F_JUNIOR@CRGL-THIRDPARTY.COM
+      role: MINERVA_DATA_FUNCTION_GDS_DATA_ENGINEER
+      authenticator: externalbrowser
+      database: CASC_DIGITAL_CONTROL_TOWER_DEV
+      warehouse: CASCSA_DCT_ING_M
+      schema: DIGITAL_CONTROL_TOWER_TRNS
+      threads: 1
+      client_session_keep_alive: False
+      connect_retries: 0
+      connect_timeout: 10
+      retry_on_database_errors: False
+      retry_all: False
+      reuse_connections: False
+
+    qas:
+      type: snowflake
+      account: cargill-dev
+      user: F_JUNIOR@CRGL-THIRDPARTY.COM
+      role: MINERVA_DATA_FUNCTION_GDS_DATA_ENGINEER
+      authenticator: externalbrowser
+      database: CASC_DIGITAL_CONTROL_TOWER_QAS
+      warehouse: CASCSA_DCT_ING_M
+      schema: DIGITAL_CONTROL_TOWER_TRNS
+      threads: 1
+      client_session_keep_alive: False
+      connect_retries: 0
+      connect_timeout: 10
+      retry_on_database_errors: False
+      retry_all: False
+      reuse_connections: False
+
+    prod:
+      type: snowflake
+      account: cargill-prod
+      user: F_JUNIOR@CRGL-THIRDPARTY.COM
+      role: MINERVA_DATA_FUNCTION_GDS_DATA_ENGINEER_PRD
+      authenticator: externalbrowser
+      database: CASC_DIGITAL_CONTROL_TOWER_PRD
+      warehouse: PRD_CASCSA_DCT_TRN_L
+      schema: DIGITAL_CONTROL_TOWER_TRNS
+      threads: 1
+      reuse_connections: True
+
+  target: dev

@@ -1,0 +1,135 @@
+-- noqa: disable=RF06,RF04
+{{
+    config(
+        materialized='table',
+        tags=['master']
+    )
+}}
+
+WITH
+SHIPMENTLINEID_TEMP AS (
+    SELECT DISTINCT
+        ID,
+        LOADNUMBER,
+        PROFILE,
+        PALLET,
+        PALLETQUANTITY,
+        CARRIER,
+        SALESORDERDELIVERYID,
+        ACTUALSHIPDATE,
+        SOURCE,
+        TRANSMODE,
+        DESTINATION,
+        FINALDESTINATION,
+        OPERATIONTYPE,
+        NUMERO_OC,
+        TN,
+        ROTA,
+        DATA_PREV_COLETA,
+        DATA_EMISSAO_OC,
+        DATA_VALIDACAO_QRCODE,
+        DATA_EMISSAO_NF_LOAD,
+        DATA_EMISSAO_NF_FICHA,
+        ROW_NUMBER() OVER (
+            PARTITION BY LOADNUMBER
+            ORDER BY ID
+        ) AS LINEID
+    FROM {{ ref('shipment_details_master') }}
+),
+
+SHIPMENTLINEID_CREATOR AS (
+    SELECT
+        ID,
+        PROFILE,
+        PALLET,
+        PALLETQUANTITY,
+        CARRIER,
+        ACTUALSHIPDATE,
+        LOADNUMBER AS CTMSLOADNUMBER,
+        SALESORDERDELIVERYID AS DEMANDID,
+        SOURCE,
+        TRANSMODE,
+        DESTINATION,
+        FINALDESTINATION,
+        OPERATIONTYPE,
+        NUMERO_OC,
+        TN,
+        ROTA,
+        DATA_PREV_COLETA,
+        DATA_EMISSAO_OC,
+        DATA_VALIDACAO_QRCODE,
+        DATA_EMISSAO_NF_LOAD,
+        DATA_EMISSAO_NF_FICHA,
+        IFF(LOADNUMBER = 'N/A', ID, LOADNUMBER) AS SHIPMENTID,
+        IFF(
+            LOADNUMBER = 'N/A', ID, CONCAT(LOADNUMBER, ' -', LINEID)
+        ) AS SHIPMENTLINEID
+    FROM SHIPMENTLINEID_TEMP
+),
+
+SHIPMENTMASTER AS (
+    SELECT DISTINCT
+        S.SHIPMENTID,
+        S.SHIPMENTLINEID,
+        S.DEMANDID,
+        S.CARRIER AS CARRIER_NAME,
+        S.PROFILE,
+        S.PALLET AS PALLET_TYPE,
+        S.PALLETQUANTITY AS PALLET_QTY,
+        S.NUMERO_OC AS OC_NUMBER,
+        TO_CHAR(S.DATA_EMISSAO_OC, 'DD-MON-YY') AS OC_EMISSION_DATE,
+        TO_CHAR(S.DATA_PREV_COLETA, 'DD-MON-YY') AS EXPECTED_COLLECTION_DATE,
+        TO_CHAR(S.DATA_VALIDACAO_QRCODE, 'DD-MON-YY') AS CHECKIN_DATE,
+        TO_CHAR(S.DATA_EMISSAO_NF_LOAD, 'DD-MON-YY') AS CARGILL_NF_DATE,
+        TO_CHAR(S.DATA_EMISSAO_NF_FICHA, 'DD-MON-YY') AS PRODUCER_NF_DATE,
+        CONCAT(S.TN, '-', RIGHT(S.ROTA, 2)) AS TN_ROTA,
+        CONCAT(S.SOURCE, ' - ', LS.LOCATION_NAME) AS SHIPMENT_SOURCE,
+        REPLACE(S.CTMSLOADNUMBER, 'N/A', '') AS CTMS_LOAD,
+        COALESCE(TO_CHAR(
+            TRY_TO_DATE(S.ACTUALSHIPDATE, 'DD-MM-YYYY HH:MI:SS'),
+            'DD-MON-YY'
+        ), 'NULL') AS ACTUALSHIPDATE,
+        CASE
+            WHEN LD.LOCATION_UNIT_STRUCTURE IN ('TRANSBORDO', 'PORTO FLUVIAL')
+                THEN CONCAT(S.DESTINATION, ' - ', LD.LOCATION_NAME)
+            WHEN LS.LOCATION_UNIT_STRUCTURE IN ('TRANSBORDO', 'PORTO FLUVIAL')
+                THEN CONCAT(S.SOURCE, ' - ', LS.LOCATION_NAME)
+            ELSE 'N/A'
+        END AS SHIPMENT_TRANSSHIPMENT,
+        CASE
+            WHEN (
+                (S.OPERATIONTYPE = 'FBZ' AND LD.LOCATION_UNIT_STRUCTURE NOT IN (
+                    'TRANSBORDO', 'PORTO FLUVIAL'
+                ))
+                OR S.OPERATIONTYPE IN ('CIF', 'FOB')
+            )
+                THEN CONCAT(S.DESTINATION, ' - ', LD.LOCATION_NAME)
+            WHEN S.FINALDESTINATION != 'N/A'
+                THEN CONCAT(S.FINALDESTINATION, ' - ', LFD.LOCATION_NAME)
+            ELSE S.FINALDESTINATION
+        END AS SHIPMENT_FINAL_DESTINATION,
+        CASE
+            WHEN (
+                (S.OPERATIONTYPE = 'FBZ' AND LD.LOCATION_UNIT_STRUCTURE NOT IN (
+                    'TRANSBORDO', 'PORTO FLUVIAL'
+                ))
+                OR S.OPERATIONTYPE IN ('CIF', 'FOB')
+            )
+                THEN LD.LOCATION_IBP_ASSET
+            ELSE LFD.LOCATION_IBP_ASSET
+        END AS SHIPMENT_IBPASSET
+    FROM SHIPMENTLINEID_CREATOR AS S
+    INNER JOIN {{ ref('location_master') }} AS LS
+        ON S.SOURCE = LS.LOCATIONID
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON S.DESTINATION = LD.LOCATIONID
+    LEFT JOIN {{ ref('location_master') }} AS LFD
+        ON S.FINALDESTINATION = LFD.LOCATIONID
+    WHERE
+        1 = 1
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM SHIPMENTMASTER

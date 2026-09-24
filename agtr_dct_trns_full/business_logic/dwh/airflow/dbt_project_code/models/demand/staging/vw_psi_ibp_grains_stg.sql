@@ -1,0 +1,179 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH
+CTE_UDC_MAPPING AS (
+    SELECT
+        CATEGORY,
+        STAGE,
+        SOURCE_CODE,
+        TARGET_CODE,
+        TARGET_NUMBER
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }}
+    WHERE
+        1 = 1
+        AND STATUS = 'ATIVO'
+),
+
+PSI_IBP_GRAINS_RAW AS (
+    SELECT
+        ITEM,
+        NULL AS RESOURCEID,
+        NULL AS CUSTOMERID,
+        "MONTH",
+        'SUPPLYINPUT' AS VALUETYPE,
+        VALUEINPUT,
+        'TN' AS UOM,
+        UPPER(UNIDADE_ORIGEM) AS LOCATIONID
+    FROM {{ source('pscfl', 'F_MIN_PSI_IBP_GRAINS_BASE') }}
+    WHERE
+        OPERACAO = 'CIF'
+        AND UPPER(TIPO) = 'ORIGINACAO'
+
+    UNION ALL
+
+    SELECT
+        ITEM,
+        NULL AS RESOURCEID,
+        NULL AS CUSTOMERID,
+        "MONTH",
+        'SUPPLYINPUT' AS VALUETYPE,
+        VALUEINPUT,
+        'TN' AS UOM,
+        UPPER(UNIDADE_ORIGEM) AS LOCATIONID
+    FROM {{ source('pscfl', 'F_MIN_PSI_IBP_GRAINS_BASE') }}
+    WHERE
+        OPERACAO = 'FOB'
+        AND UPPER(TIPO) = 'FLUXO ORIGEM'
+
+    UNION ALL
+
+    SELECT
+        ITEM,
+        NULL AS RESOURCEID,
+        NULL AS CUSTOMERID,
+        "MONTH",
+        'EOHINPUT' AS VALUETYPE,
+        VALUEINPUT,
+        'TN' AS UOM,
+        UPPER(UNIDADE_ORIGEM) AS LOCATIONID
+    FROM {{ source('pscfl', 'F_MIN_PSI_IBP_GRAINS_BASE') }}
+    WHERE UPPER(TIPO) IN ('VARINVASSET', 'VARINVTBO')
+
+    UNION ALL
+
+    SELECT
+        ITEM,
+        NULL AS RESOURCEID,
+        NULL AS CUSTOMERID,
+        MONTH,
+        'EOHINPUT' AS VALUETYPE,
+        VALUEINPUT,
+        'TN' AS UOM,
+        UPPER(UNIDADE_DESTINO) AS LOCATIONID
+    FROM {{ source('pscfl', 'F_MIN_PSI_IBP_GRAINS_BASE') }}
+    WHERE UPPER(TIPO) IN ('VARINVDESTINO')
+
+    UNION ALL
+
+    SELECT
+        TRIM(
+            UPPER(SUBSTR(TABLE_NAME, REGEXP_INSTR(TABLE_NAME, ' - ') + 3, 5))
+        ) AS ITEM,
+        NULL AS RESOURCEID,
+        UPPER("LOCATION") AS CUSTOMERID,
+        MONTH,
+        'DEMANDINPUT' AS VALUETYPE,
+        VALUEINPUT,
+        'TN' AS UOM,
+        UPPER("LOCATION") AS LOCATIONID
+    FROM {{ source('pscfl', 'F_MIN_PSI_IBP_GRAINS_EXPORTACAO') }}
+    WHERE
+        TIPO = 'PROGRAMA EXP'
+        AND "LOCATION" NOT IN ('PORTO SANTOS', 'PORTO SANTAREM')
+
+    UNION ALL
+
+    SELECT
+        TRIM(
+            UPPER(SUBSTR(TABLE_NAME, REGEXP_INSTR(TABLE_NAME, ' - ') + 3, 5))
+        ) AS ITEM,
+        NULL AS RESOURCEID,
+        UPPER(TIPO) AS CUSTOMERID,
+        MONTH,
+        'DEMANDINPUT' AS VALUETYPE,
+        VALUEINPUT,
+        'TN' AS UOM,
+        UPPER("LOCATION") AS LOCATIONID
+    FROM {{ source('pscfl', 'F_MIN_PSI_IBP_GRAINS_EXPORTACAO') }}
+    WHERE
+        TIPO NOT IN ('SUPPLY', 'PIPE + ESTOQUE', 'VENDIDO', 'PROGRAMA EXP')
+        AND "LOCATION" IN ('PORTO SANTOS', 'PORTO SANTAREM')
+
+    UNION ALL
+
+    SELECT
+        TRIM(
+            UPPER(
+                SUBSTR(
+                    PROG.TABLE_NAME, REGEXP_INSTR(
+                        PROG.TABLE_NAME, ' - '
+                    ) + 3, 5
+                )
+            )
+        ) AS ITEM,
+        NULL AS RESOURCEID,
+        PROG.CUSTOMER AS CUSTOMERID,
+        PROG.MONTH,
+        'DEMANDINPUT' AS VALUETYPE,
+        PROG.VALUEINPUT,
+        'TN' AS UOM,
+        COALESCE(LOC.TARGET_CODE, PROG.LOCATION) AS LOCATIONID
+    FROM {{ source('pscfl', 'F_MIN_PSI_IBP_GRAINS_PROGRAMA') }} AS PROG
+    LEFT JOIN CTE_UDC_MAPPING AS LOC
+        ON
+            UPPER(PROG.LOCATION) = LOC.SOURCE_CODE
+            AND LOC.CATEGORY = 'PSI_IBP_LOCATION'
+            AND LOC.STAGE = 'GRAINS_PROGRAMA_EXP'
+    WHERE PROG.TIPO = 'GAME PLAN'
+),
+
+PSI_IBP_GRAINS_TRANSFORMED AS (
+
+    SELECT
+        GRAINS."ITEM",
+        GRAINS.RESOURCEID,
+        GRAINS.LOCATIONID,
+        GRAINS.CUSTOMERID,
+        GRAINS.MONTH,
+        GRAINS.VALUETYPE,
+        GRAINS.VALUEINPUT,
+        GRAINS.UOM
+    FROM PSI_IBP_GRAINS_RAW AS GRAINS
+    WHERE
+        GRAINS.VALUEINPUT NOT IN ('SBS', 'CORN')
+        AND TRY_TO_DATE(GRAINS.MONTH, 'MM-YYYY') >= '2025-01-01'::DATE
+)
+
+SELECT
+    TRIM(UPPER(ITEM)) AS ITEM,
+    COALESCE(TRIM(UPPER(RESOURCEID)), 'N/A') AS RESOURCEID,
+    TRIM(UPPER(LOCATIONID)) AS "LOCATION",
+    COALESCE(TRIM(UPPER(CUSTOMERID)), 'N/A') AS CUSTOMERID,
+    TRIM(UPPER("MONTH")) AS "MONTH",
+    TRIM(UPPER(VALUETYPE)) AS "VALUETYPE",
+    ROUND(SUM(TO_NUMBER(REPLACE(VALUEINPUT, ',', '.'))), 3) AS VALUEINPUT,
+    TRIM(UOM) AS "UOM"
+FROM PSI_IBP_GRAINS_TRANSFORMED
+GROUP BY
+    "MONTH",
+    ITEM,
+    RESOURCEID,
+    LOCATIONID,
+    CUSTOMERID,
+    VALUETYPE,
+    UOM

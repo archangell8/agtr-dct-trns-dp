@@ -1,0 +1,90 @@
+-- noqa: disable=all
+{% set list_tags = ['model_final', 'delta_full', 'delta_execution'] %}
+
+{{
+    config(
+        materialized = 'view',
+        tags = list_tags
+    )
+}}
+
+WITH FINAL AS (
+    SELECT
+        0 AS IDX,
+        'CUSTOMERID' AS CUSTOMERID,
+        'TAXID' AS TAXID,
+        'NAME' AS "NAME", -- noqa
+        'STATUS' AS STATUS,
+        'ADDRESS' AS ADDRESS,
+        'COMPLEMENT' AS COMPLEMENT,
+        'NEIGHBORHOOD' AS NEIGHBORHOOD,
+        'ZIPCODE' AS ZIPCODE,
+        'CITY' AS CITY,
+        'STATE' AS STATE,
+        'COUNTRY' AS COUNTRY,
+        'MARKET' AS MARKET,
+        'TERRITORY' AS TERRITORY,
+        'SEGMENTATION' AS SEGMENTATION,
+        'CUSTOMERGROUP' AS CUSTOMERGROUP,
+        'CUSTOMERGROUPDESCRIPTION' AS CUSTOMERGROUPDESCRIPTION,
+        'CREDITBLOCKED' AS CREDITBLOCKED,
+        NULL AS HASH_ID,
+        NULL AS CDP_TRANSACTION,
+        (SELECT CDP_TIMESTAMP FROM {{ ref('tab_cdp_timestamp_models') }} WHERE MODEL_NAME = UPPER('customer')) AS CDP_TIMESTAMP_FULL, -- noqa
+        (SELECT CDP_TIMESTAMP FROM {{ ref('tab_cdp_timestamp_models') }} WHERE MODEL_NAME = UPPER('customer')) AS CDP_TIMESTAMP_INC, -- noqa
+        'CDP_TIMESTAMP_O9' AS CDP_TIMESTAMP_O9
+
+    UNION ALL
+
+    SELECT
+        1 AS IDX,
+        CUSTOMERID::STRING,
+        TAXID::STRING,
+        NAME::STRING,
+        STATUS::STRING,
+        ADDRESS::STRING,
+        COMPLEMENT::STRING,
+        NEIGHBORHOOD::STRING,
+        ZIPCODE::STRING,
+        CITY::STRING,
+        STATE::STRING,
+        COUNTRY::STRING,
+        MARKET::STRING,
+        TERRITORY::STRING,
+        SEGMENTATION::STRING,
+        CUSTOMERGROUP::STRING,
+        CUSTOMERGROUPDESCRIPTION::STRING,
+        CREDITBLOCKED::STRING,
+        HASH_ID,
+        CDP_TRANSACTION,
+        CDP_TIMESTAMP_FULL,
+        CDP_TIMESTAMP_INC,
+        CDP_TIMESTAMP_O9::STRING
+    FROM {{ ref('customer') }}
+)
+
+SELECT
+    CUSTOMERID,
+    TAXID,
+    NAME,
+    STATUS,
+    ADDRESS,
+    COMPLEMENT,
+    NEIGHBORHOOD,
+    ZIPCODE,
+    CITY,
+    STATE,
+    COUNTRY,
+    MARKET,
+    TERRITORY,
+    SEGMENTATION,
+    CUSTOMERGROUP,
+    CUSTOMERGROUPDESCRIPTION,
+    CREDITBLOCKED,
+    HASH_ID,
+    CDP_TRANSACTION,
+    CDP_TIMESTAMP_FULL,
+    CDP_TIMESTAMP_INC,
+    CDP_TIMESTAMP_O9
+FROM FINAL
+ORDER BY IDX ASC

@@ -1,0 +1,138 @@
+-- noqa: disable=RF06,ST09
+{{
+    config(
+        materialized='table'
+    )
+}}
+
+WITH
+CTMS AS (
+    SELECT -- noqa
+        CTMS.TIPO,
+        {{ check_empty_or_zero('CTMS.BP_ORIGEM') }} AS BP_ORIGEM, -- noqa
+        {{ check_empty_or_zero('CTMS.BP_DESTINO') }} AS BP_DESTINO, -- noqa
+        {{ check_empty_or_zero('CTMS.ADRESS_COLETA') }} AS ADRESS_COLETA, -- noqa
+        {{ check_empty_or_zero('CTMS.ADRESS_DESTINO') }} AS ADRESS_DESTINO, -- noqa
+        CTMS.COD_ITEM,
+        CASE UPPER(TRIM(CTMS.TIPO_OPERACAO))
+            WHEN 'TRANSFERENCIA' THEN 'TRF'
+            WHEN 'VENDAS' THEN 'VEN'
+            ELSE UPPER(TRIM(CTMS.TIPO_OPERACAO))
+        END AS TIPO_OPERACAO,
+        CTMS.INICIO_COLETA_FAZENDA,
+        CTMS.QUANTIDADE,
+        CTMS.ADRESS_TRANSPORTADORA,
+        CTMS.NOME_TRANSPORTADORA,
+        CTMS.CNPJ_TRANSPORTADORA,
+        CTMS.TN,
+        CTMS.ROTA,
+        UPPER(REPLACE({{ check_empty_or_zero('PLACA') }},'-', '')) AS PLACA, -- noqa
+        CTMS.DATA_PREV_COLETA,
+        CTMS.DATA_EMISSAO_OC,
+        CTMS.STATUS_OC,
+        CTMS.STATUS_COD,
+        CTMS.DATA_VALIDACAO_QRCODE,
+        CTMS.CHAVE_QRCODE,
+        TRY_CAST(NULL AS TIMESTAMP) AS DATA_ENTREGA,
+        CTMS.TIPO_TRANSPORTE,
+        CTMS.CTMS_TIMESTAMP,
+        CTMS.DATA_NF,
+        CASE UPPER(CTMS.TIPO_TRANSPORTE)
+            WHEN 'R' THEN 'ROD'
+            WHEN 'L' THEN 'HID'
+            WHEN 'F' THEN 'FER'
+        END AS MODAL,
+        IFF(
+            COALESCE(CTMS.NUMERO_OC, 0) = 0, NULL, TO_CHAR(CTMS.NUMERO_OC)
+        ) AS "NUMERO_OC",
+        IFF(
+            COALESCE(TRY_CAST(CTMS.LOAD AS BIGINT), 0) = 0, NULL,
+            TO_CHAR(TRUNC(CTMS.LOAD))
+        ) AS "LOAD",
+        IFF(
+            COALESCE(CTMS.NUM_NF, 0) = 0, NULL, TO_CHAR(TRUNC(CTMS.NUM_NF))
+        ) AS "NUM_NF",
+        IFF(
+            TRIM(F5549400.VHDMCT) != '',
+            F5549400.VHKCOO || '-' || TRIM(F5549400.VHDMCT),
+            NULL
+        ) AS SOURCINGCONTRACTID
+    FROM {{ source('ctms', 'VW_DCT_TN') }} AS CTMS
+    INNER JOIN {{ ref('item_master') }} AS ITM
+        ON ITM.ITEM = CTMS.COD_ITEM
+    LEFT JOIN {{ source('jde', 'F5549400') }} AS F5549400
+        ON
+            F5549400.VHKCOO IN ('52180', '52171')
+            AND F5549400.VHDCTO = 'TN'
+            AND TRIM(F5549400.VHDOCO) = CTMS.TN
+            AND TRIM(F5549400.VHAA05) = CTMS.ROTA
+)
+
+SELECT DISTINCT -- noqa
+    CTMS.TIPO,
+    CTMS.BP_ORIGEM,
+    CTMS.BP_DESTINO,
+    CTMS.ADRESS_COLETA,
+    CTMS.ADRESS_DESTINO,
+    CTMS.COD_ITEM,
+    COALESCE(
+        LOAD_INTRANSIT.TIPO_DE_OPERACAO, CTMS.TIPO_OPERACAO
+    ) AS TIPO_OPERACAO,
+    CTMS.INICIO_COLETA_FAZENDA,
+    CTMS.QUANTIDADE,
+    CTMS.ADRESS_TRANSPORTADORA,
+    CTMS.NOME_TRANSPORTADORA,
+    CTMS.CNPJ_TRANSPORTADORA,
+    CTMS.TN,
+    CTMS.ROTA,
+    CTMS.PLACA,
+    CTMS.DATA_PREV_COLETA,
+    CTMS.DATA_EMISSAO_OC,
+    CTMS.STATUS_OC,
+    CTMS.STATUS_COD,
+    CTMS.DATA_VALIDACAO_QRCODE,
+    CTMS.CHAVE_QRCODE,
+    CTMS.DATA_ENTREGA,
+    CTMS.TIPO_TRANSPORTE,
+    CTMS.CTMS_TIMESTAMP,
+    CTMS.DATA_NF,
+    CTMS.MODAL,
+    CTMS.NUMERO_OC,
+    CTMS.LOAD,
+    CTMS.NUM_NF,
+    CASE
+        WHEN LOAD_INTRANSIT.CODIGO_STATUS_LOAD = '98'
+            THEN 'N/A'
+        WHEN FICHA_INTRANSIT_1.CODIGO_STATUS_FICHA IN ('980-999', '400-420')
+            THEN 'N/A'
+        WHEN FICHA_INTRANSIT_2.CODIGO_STATUS_FICHA IN ('980-999', '400-420')
+            THEN 'N/A'
+        ELSE COALESCE(CTMS.SOURCINGCONTRACTID, 'N/A')
+    END AS SOURCINGCONTRACTID,
+    CONCAT(
+        COALESCE(CTMS.LOAD, 'N/A'), '-',
+        COALESCE(CTMS.ADRESS_COLETA, CTMS.BP_ORIGEM, 'N/A'), '-',
+        COALESCE(CTMS.NUM_NF, 'N/A'), '-FOB'
+    ) AS BK_FOB,
+    CONCAT(
+        COALESCE(CTMS.LOAD, 'N/A'), '-',
+        COALESCE(CTMS.ADRESS_COLETA, CTMS.BP_ORIGEM, 'N/A'), '-FBZ'
+    ) AS BK_FBZ,
+    CONCAT(
+        COALESCE(CTMS.LOAD, 'N/A'), '-',
+        COALESCE(CTMS.ADRESS_COLETA, CTMS.BP_ORIGEM, 'N/A'), '-VEN'
+    ) AS BK_VEN,
+    COALESCE(CTMS.LOAD, 'N/A') || '-N/A-TRF' AS BK_TRF
+FROM CTMS
+LEFT JOIN ( -- noqa
+    SELECT DISTINCT
+        LOAD,
+        TIPO_DE_OPERACAO,
+        CODIGO_STATUS_LOAD
+    FROM {{ ref('tab_shipment_load_intransit_stg') }}
+) AS LOAD_INTRANSIT
+    ON CTMS.LOAD = LOAD_INTRANSIT.LOAD
+LEFT JOIN {{ ref('tab_shipment_ficha_intransit_stg') }} AS FICHA_INTRANSIT_1
+    ON CTMS.LOAD = FICHA_INTRANSIT_1.LOAD_NUMBER
+LEFT JOIN {{ ref('tab_shipment_ficha_intransit_stg') }} AS FICHA_INTRANSIT_2
+    ON CTMS.LOAD = FICHA_INTRANSIT_2.FICHA

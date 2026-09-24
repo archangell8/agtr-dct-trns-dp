@@ -1,0 +1,195 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='table'
+    )
+}}
+
+WITH
+CUSTOMER_SF AS (
+    SELECT
+        ID AS SALESFORCE_ID,
+        CUSTOMER_ID AS CUSTOMERID,
+        CUSTOMER_NAME AS CUSTOMERNAME,
+        MARKET,
+        CUSTOMER_GROUP AS CUSTOMERGROUP,
+        CUSTOMER_GROUP_DESCRIPTION AS CUSTOMERGROUPDESCRIPTION,
+        REGION_CUSTOMER AS TERRITORYREGION,
+        SUB_REGION_CUSTOMER AS TERRITORY,
+        SEGMENTATION,
+        BUSINESS_NAME AS BUSINESSNAME,
+        LASTMODIFIEDDATE
+    FROM {{ source('salesforce', 'CUSTOMER') }}
+    WHERE
+        1 = 1
+        AND UPPER(MARKET) != 'ORIGINATION GRAIN'
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY CUSTOMER_ID ORDER BY LASTMODIFIEDDATE DESC
+    ) = 1
+),
+
+CUSTOMER_JDE AS (
+    SELECT -- noqa
+        JDE.CUSTOMERID,
+        JDE.TAXID,
+        -- JDE.TYPE,
+        JDE.NAME,
+        JDE.STATUS AS "STATUS",
+        JDE.ADDRESS,
+        JDE.COMPLEMENT,
+        JDE.NEIGHBORHOOD,
+        JDE.ZIPCODE,
+        JDE.CITY,
+        JDE.STATE,
+        JDE.COUNTRY,
+        COALESCE(SF.MARKET, 'Domestic Market') AS MARKET,
+        REPLACE(
+            REPLACE(
+                COALESCE(SF.TERRITORY, JDE.STATE), '.', 'Não Parametrizado'
+            ), '*', 'Não Parametrizado'
+        ) AS TERRITORY,
+        COALESCE(SF.SEGMENTATION, 'Não Parametrizado') AS SEGMENTATION,
+        COALESCE(SF.CUSTOMERGROUP, 'Não Parametrizado') AS CUSTOMERGROUP,
+        COALESCE(SF.CUSTOMERGROUPDESCRIPTION, 'Não Parametrizado')
+            AS CUSTOMERGROUPDESCRIPTION,
+        TRIM(JDE.CREDITBLOCKED::BOOLEAN) AS CREDITBLOCKED
+    FROM {{ ref('tab_customer_jde_stg') }} AS JDE
+    LEFT JOIN CUSTOMER_SF AS SF
+        ON JDE.CUSTOMERID = SF.CUSTOMERID
+    WHERE
+        1 = 1
+        --AND JDE.TYPE NOT LIKE 'V%'
+        --AND UPPER(SF.MARKET) != 'ORIGINATION GRAIN'
+        --AND UPPER(SF.TERRITORY) != 'CLIENTES FORA DE ATIVIDADE'
+        --AND SF.CUSTOMERGROUP IS NOT NULL
+),
+
+CUSTOMER_OTHER AS (
+    SELECT -- noqa
+        CUSTOMERID,
+        TAXID,
+        -- TYPE,
+        NAME AS "NAME",
+        STATUS AS "STATUS",
+        ADDRESS AS "ADDRESS",
+        COMPLEMENT,
+        NEIGHBORHOOD,
+        ZIPCODE,
+        CITY,
+        STATE AS "STATE",
+        COUNTRY,
+        MARKET,
+        REPLACE(
+            REPLACE(
+                TERRITORY, '*', 'Não Parametrizado'
+            ), '.', 'Não Parametizado'
+        ) AS TERRITORY,
+        SEGMENTATION,
+        CUSTOMERGROUP,
+        CUSTOMERGROUPDESCRIPTION,
+        CASE
+            WHEN CREDITBLOCKED = 'False' THEN FALSE
+            WHEN CREDITBLOCKED = 'True' THEN TRUE
+            ELSE CREDITBLOCKED
+        END::BOOLEAN AS CREDITBLOCKED
+    FROM {{ source('pscfl', 'F_MIN_CUSTOMER_OTHER') }}
+    WHERE
+        1 = 1
+),
+
+CUSTOMER_LOCATION AS (
+    SELECT
+        CUSTOMERID,
+        TAXID,
+        -- TYPE,
+        NAME AS "NAME",
+        STATUS AS "STATUS",
+        ADDRESS AS "ADDRESS",
+        COMPLEMENT,
+        NEIGHBORHOOD,
+        ZIPCODE,
+        CITY,
+        STATE AS "STATE",
+        COUNTRY,
+        MARKET,
+        TERRITORY,
+        SEGMENTATION,
+        CUSTOMERGROUP,
+        CUSTOMERGROUPDESCRIPTION,
+        CREDITBLOCKED::BOOLEAN AS CREDITBLOCKED
+    FROM {{ ref('vw_customer_location_stg') }}
+    WHERE
+        1 = 1
+),
+
+SALES_ORDER AS (
+    SELECT DISTINCT CUSTOMERID AS ID
+    FROM {{ ref('tab_sales_order_delivery_stg') }}
+    WHERE CUSTOMERID != 'N/A'
+
+    UNION DISTINCT
+
+    SELECT DISTINCT SHIPTO AS ID FROM {{ ref('tab_sales_order_delivery_stg') }}
+    WHERE SHIPTO != 'N/A'
+
+    UNION DISTINCT
+
+    SELECT DISTINCT CUSTOMERID AS ID FROM {{ ref('vw_psi_ibp_stg') }}
+    WHERE CUSTOMERID != 'N/A'
+
+    UNION DISTINCT
+
+    SELECT DISTINCT CUSTOMERID AS ID FROM {{ ref('vw_actual_psi_ibp_stg') }}
+    WHERE CUSTOMERID != 'N/A'
+),
+
+CUSTOMER_UNION AS (
+    SELECT * FROM CUSTOMER_OTHER
+
+    UNION ALL
+
+    SELECT * FROM CUSTOMER_JDE
+
+    UNION ALL
+
+    SELECT * FROM CUSTOMER_LOCATION
+),
+
+CUSTOMER AS (
+    SELECT DISTINCT
+        COALESCE(NULLIF(TRIM(C.CUSTOMERID), ''), 'N/A') AS CUSTOMERID,
+        COALESCE(NULLIF(TRIM(C.TAXID), ''), 'N/A') AS TAXID,
+        COALESCE(NULLIF(TRIM(C.NAME), ''), 'N/A') AS "NAME",
+        COALESCE(NULLIF(TRIM(C.STATUS), ''), 'N/A') AS "STATUS",
+        REPLACE(
+            COALESCE(NULLIF(TRIM(C.ADDRESS), ''), 'N/A'), '|', ' '
+        ) AS "ADDRESS",
+        COALESCE(NULLIF(TRIM(C.COMPLEMENT), ''), 'N/A') AS COMPLEMENT,
+        REPLACE(
+            COALESCE(NULLIF(TRIM(C.NEIGHBORHOOD), ''), 'N/A'), '|', ' '
+        ) AS "NEIGHBORHOOD",
+        COALESCE(NULLIF(TRIM(C.ZIPCODE), ''), 'N/A') AS ZIPCODE,
+        COALESCE(NULLIF(TRIM(C.CITY), ''), 'N/A') AS CITY,
+        COALESCE(NULLIF(TRIM(C.STATE), ''), 'N/A') AS "STATE",
+        COALESCE(NULLIF(TRIM(C.COUNTRY), ''), 'N/A') AS COUNTRY,
+        COALESCE(NULLIF(TRIM(C.MARKET), ''), 'Não Parametrizado') AS MARKET,
+        COALESCE(NULLIF(TRIM(C.TERRITORY), ''), 'Não Parametrizado')
+            AS TERRITORY,
+        COALESCE(NULLIF(TRIM(C.SEGMENTATION), ''), 'Não Parametrizado')
+            AS SEGMENTATION,
+        COALESCE(NULLIF(TRIM(C.CUSTOMERGROUP), ''), 'Não Parametrizado')
+            AS CUSTOMERGROUP,
+        COALESCE(
+            NULLIF(TRIM(C.CUSTOMERGROUPDESCRIPTION), ''),
+            'Não Parametrizado'
+        ) AS CUSTOMERGROUPDESCRIPTION,
+        TRIM(C.CREDITBLOCKED::BOOLEAN) AS CREDITBLOCKED
+    FROM CUSTOMER_UNION AS C
+    INNER JOIN SALES_ORDER AS S
+        ON C.CUSTOMERID = S.ID
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM CUSTOMER

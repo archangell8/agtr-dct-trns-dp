@@ -1,0 +1,306 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='table',
+        tags='master'
+    )
+}}
+
+WITH
+VESSEL_DEMAND_TEMP AS (
+    SELECT
+        A.TRIPID,
+        A.VESSELNAME,
+        A.ITEM,
+        A.LAYCANMIN,
+        A.LAYCANMAX,
+        A.CHARTER,
+        A.DEMURRAGERATE,
+        A.DESPATCHRATE,
+        A.PLANNEDQUANTITY,
+        A.ESTIMATEDARRIVALTIME,
+        A.ESTIMATEDBERTHINGTIME,
+        A.ESTIMATEDCOMPLETIONTIME,
+        B.DATE,
+        A.BUYER,
+        A.DESTINATION
+    FROM {{ ref('intstg_vesseldetails') }} AS A
+    LEFT JOIN {{ ref('intstg_portpenalty') }} AS B
+        ON
+            A.TRIPID = B.TRIPID
+            AND A.ITEM = B.ITEM
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY A.TRIPID, A.ITEM, A.PLANNEDQUANTITY
+        ORDER BY B.DATE DESC
+    ) = 1
+),
+
+BP_MASTER AS (
+    SELECT DISTINCT
+        BP_NUMBER,
+        BP_NAME,
+        DESTINATION_IBGE_ID,
+        ORIGIN_SUBREGION
+    FROM {{ ref('location_bp_master') }}
+),
+
+LOCATIONDISPLAYNAME AS (
+    SELECT
+        LOCATIONID,
+        CITY,
+        CONCAT(LOCATIONID, ' - ', LOCATION_NAME) AS LOCATION_DISPLAYNAME
+    FROM {{ ref('location_master') }}
+),
+
+VESSEL_DEMAND AS (
+    SELECT
+        'All' AS ALL_DEMAND,
+        'Vessel' AS DEMAND_GROUP,
+        'N/A' AS DEMAND_HEADERID,
+        'N/A' AS DEMAND_REQUESTID,
+        'N/A' AS DEMAND_SHIPTO,
+        TRIPID AS DEMANDID,
+        VESSELNAME AS VESSEL,
+        CHARTER,
+        NULL AS SOURCE_BP,
+        BUYER,
+        DESTINATION,
+        NULL AS SHIP_TO,
+        NULL AS FREIGHT_TYPE,
+        NULL AS COMMITTED_DATE,
+        NULL AS AVAILABLE_QTY,
+        NULL AS "OWNERSHIP",
+        NULL AS STATUS,
+        NULL AS BLOCKING_TYPE,
+        NULL AS OPERATION_TYPE,
+        NULL AS FREIGHT_TERMS,
+        NULL AS SMAC_BRANCH_PLANT,
+        NULL AS SMAC_ORIGEM_CIDADE_UF,
+        NULL AS SMAC_CLIENTE_NOME,
+        NULL AS SMAC_DESTINO_CIDADE_UF,
+        NULL AS SMAC_PRODUTO,
+        NULL AS CMM_CRUSH_IBGECODE,
+        NULL AS CMM_CRUSH_SUBREGION,
+        NULL AS DEMAND_STATUS,
+        NULL AS REFERENCE_PORT,
+        NULL AS DELIVERED_QTY,
+        NULL AS SHIPTO_SUBREGION,
+        NULL AS CMM_SHIPTO_ADDRESS,
+        NULL AS DEMANDID_DISPLAYNAME,
+        NULL AS SHIPTO_LOCATION_TYPE,
+        'N/A' AS PICKUP_LOCATION,
+        TO_CHAR(MAX(LAYCANMIN), 'DD-MON-YY') AS LAYCAN_MIN,
+        TO_CHAR(MAX(LAYCANMAX), 'DD-MON-YY') AS LAYCAN_MAX,
+        TO_CHAR(MAX(ESTIMATEDARRIVALTIME), 'DD-MON-YY') AS ETA,
+        TO_CHAR(MAX(ESTIMATEDBERTHINGTIME), 'DD-MON-YY') AS ETB,
+        TO_CHAR(MAX(ESTIMATEDCOMPLETIONTIME), 'DD-MON-YY') AS ETC,
+        TO_CHAR(MAX(DATE), 'DD-MON-YY') AS PENALTY_ETC,
+        MAX(DEMURRAGERATE) AS DEMURRAGE_RATE,
+        MAX(DESPATCHRATE) AS DESPATCH_RATE,
+        SUM(PLANNEDQUANTITY) AS QUANTITY
+    FROM VESSEL_DEMAND_TEMP
+    GROUP BY
+        TRIPID,
+        VESSELNAME,
+        CHARTER,
+        BUYER,
+        DESTINATION
+),
+
+SALESORDER_DEMAND AS (
+    SELECT DISTINCT
+        'All' AS ALL_DEMAND,
+        'SalesOrder' AS DEMAND_GROUP,
+        'N/A' AS DEMAND_HEADERID,
+        'N/A' AS DEMAND_REQUESTID,
+        A.DEMANDID,
+        NULL AS VESSEL,
+        NULL AS LAYCAN_MIN,
+        NULL AS LAYCAN_MAX,
+        NULL AS CHARTER,
+        NULL AS DEMURRAGE_RATE,
+        NULL AS DESPATCH_RATE,
+        NULL AS QUANTITY,
+        NULL AS ETA,
+        NULL AS ETB,
+        NULL AS ETC,
+        NULL AS PENALTY_ETC,
+        NULL AS BUYER,
+        NULL AS DESTINATION,
+        A.FREIGHTTYPE AS FREIGHT_TYPE,
+        A.AVAILABLEQUANTITY AS AVAILABLE_QTY,
+        A.SHIPTO AS SHIP_TO,
+        A.STATUS,
+        A.BLOCKINGTYPE AS BLOCKING_TYPE,
+        A.OPERATIONTYPE AS OPERATION_TYPE,
+        A.FREIGHTTYPE AS FREIGHT_TERMS,
+        A.SHIPTO AS DEMAND_SHIPTO,
+        A.SOURCEBP AS SMAC_BRANCH_PLANT,
+        D.NAME AS SMAC_CLIENTE_NOME,
+        E.ITEMNAME AS SMAC_PRODUTO,
+        B.DESTINATION_IBGE_ID AS CMM_CRUSH_IBGECODE,
+        B.ORIGIN_SUBREGION AS CMM_CRUSH_SUBREGION,
+        A.STATUS AS DEMAND_STATUS,
+        A.REFERENCEPORT AS REFERENCE_PORT,
+        A.DELIVEREDSALESORDERQUANTITY AS DELIVERED_QTY,
+        F.LOCATION_SUB_REGION AS SHIPTO_SUBREGION,
+        F.LOCATION_UNIT_STRUCTURE AS SHIPTO_LOCATION_TYPE,
+        A.CMM_SHIPTO_ADDRESS,
+        A.PICKUP_LOCATION,
+        CONCAT(A.SOURCEBP, ' - ', B.BP_NAME) AS SOURCE_BP,
+        CONCAT(C.CITY, ' (', C.STATE, ')') AS SMAC_ORIGEM_CIDADE_UF,
+        CONCAT(
+            LEFT(A.DEMANDID, LEN(A.DEMANDID) - 12),
+            '-',
+            RIGHT(LEFT(A.DEMANDID, LEN(A.DEMANDID) - 10), 2)
+        ) AS DEMANDID_DISPLAYNAME,
+        CASE
+            WHEN A.OPERATIONTYPE = 'VEN'
+                THEN 'CUSTOMER'
+            ELSE C.LOCATION_OWNERSHIP
+        END AS "OWNERSHIP",
+        CASE
+            WHEN F.LOCATIONID IS NOT NULL
+                THEN CONCAT(F.CITY, ' (', F.STATE, ')')
+            ELSE CONCAT(G.CITY, ' (', G.STATE, ')')
+        END AS SMAC_DESTINO_CIDADE_UF,
+        TO_CHAR(
+            TRY_TO_DATE(A.SALESORDERCOMMITDATE, 'DD-MM-YYYY'),
+            'DD-MON-YY'
+        ) AS COMMITTED_DATE
+    FROM {{ ref('sales_order_delivery_master') }} AS A
+    LEFT JOIN BP_MASTER AS B
+        ON A.SOURCEBP = B.BP_NUMBER
+    LEFT JOIN {{ ref('location_master') }} AS C
+        ON A.CUSTOMERID = C.LOCATIONID
+    LEFT JOIN {{ ref('customer_master') }} AS D
+        ON A.CUSTOMERID = D.CUSTOMERID
+    LEFT JOIN {{ ref('item_master') }} AS E
+        ON A.ITEM = E.ITEM
+    LEFT JOIN {{ ref('location_master') }} AS F
+        ON A.SHIPTO = F.LOCATIONID
+    LEFT JOIN {{ ref('customer_master') }} AS G
+        ON A.SHIPTO = G.CUSTOMERID
+),
+
+DEMANDMASTER_TEMP AS (
+    SELECT
+        ALL_DEMAND,
+        DEMAND_GROUP,
+        DEMAND_HEADERID,
+        DEMAND_REQUESTID,
+        DEMANDID,
+        DEMANDID_DISPLAYNAME,
+        CHARTER,
+        BUYER,
+        DESTINATION,
+        VESSEL,
+        SOURCE_BP,
+        FREIGHT_TYPE,
+        COMMITTED_DATE,
+        AVAILABLE_QTY,
+        SHIP_TO,
+        OWNERSHIP,
+        STATUS,
+        BLOCKING_TYPE,
+        OPERATION_TYPE,
+        FREIGHT_TERMS,
+        DEMAND_SHIPTO,
+        SMAC_BRANCH_PLANT,
+        SMAC_ORIGEM_CIDADE_UF,
+        SMAC_CLIENTE_NOME,
+        SMAC_DESTINO_CIDADE_UF,
+        SMAC_PRODUTO,
+        CMM_CRUSH_IBGECODE,
+        CMM_CRUSH_SUBREGION,
+        DEMAND_STATUS,
+        REFERENCE_PORT,
+        DELIVERED_QTY,
+        SHIPTO_SUBREGION,
+        SHIPTO_LOCATION_TYPE,
+        CMM_SHIPTO_ADDRESS,
+        LAYCAN_MIN,
+        LAYCAN_MAX,
+        ETA,
+        ETB,
+        ETC,
+        PENALTY_ETC,
+        DEMURRAGE_RATE,
+        DESPATCH_RATE,
+        QUANTITY,
+        PICKUP_LOCATION
+    FROM VESSEL_DEMAND
+
+    UNION ALL
+
+    SELECT
+        ALL_DEMAND,
+        DEMAND_GROUP,
+        DEMAND_HEADERID,
+        DEMAND_REQUESTID,
+        DEMANDID,
+        DEMANDID_DISPLAYNAME,
+        CHARTER,
+        BUYER,
+        DESTINATION,
+        VESSEL,
+        SOURCE_BP,
+        FREIGHT_TYPE,
+        COMMITTED_DATE,
+        AVAILABLE_QTY,
+        SHIP_TO,
+        OWNERSHIP,
+        STATUS,
+        BLOCKING_TYPE,
+        OPERATION_TYPE,
+        FREIGHT_TERMS,
+        DEMAND_SHIPTO,
+        SMAC_BRANCH_PLANT,
+        SMAC_ORIGEM_CIDADE_UF,
+        SMAC_CLIENTE_NOME,
+        SMAC_DESTINO_CIDADE_UF,
+        SMAC_PRODUTO,
+        CMM_CRUSH_IBGECODE,
+        CMM_CRUSH_SUBREGION,
+        DEMAND_STATUS,
+        REFERENCE_PORT,
+        DELIVERED_QTY,
+        SHIPTO_SUBREGION,
+        SHIPTO_LOCATION_TYPE,
+        CMM_SHIPTO_ADDRESS,
+        LAYCAN_MIN,
+        LAYCAN_MAX,
+        ETA,
+        ETB,
+        ETC,
+        PENALTY_ETC,
+        DEMURRAGE_RATE,
+        DESPATCH_RATE,
+        QUANTITY,
+        PICKUP_LOCATION
+    FROM SALESORDER_DEMAND
+),
+
+DEMANDMASTER AS (
+    SELECT
+        D.*,
+        COALESCE(
+            NULLIF(CONCAT(
+                C.CUSTOMERDISPLAYNAME, ' (', NULLIF(C.CITY, ''), ')'
+            ), '()'),
+            NULLIF(CONCAT(
+                L.LOCATION_DISPLAYNAME, ' (', NULLIF(L.CITY, ''), ')'
+            ), ' ()'),
+            D.DEMAND_SHIPTO
+        ) AS SHIPTO_DISPLAYNAME
+    FROM DEMANDMASTER_TEMP AS D
+    LEFT JOIN {{ ref('out_customermaster') }} AS C
+        ON D.DEMAND_SHIPTO = C.CUSTOMER
+    LEFT JOIN LOCATIONDISPLAYNAME AS L
+        ON D.DEMAND_SHIPTO = L.LOCATIONID
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM DEMANDMASTER

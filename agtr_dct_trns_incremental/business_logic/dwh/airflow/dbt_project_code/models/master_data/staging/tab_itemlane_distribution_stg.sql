@@ -1,0 +1,1139 @@
+-- noqa: disable=all
+{{
+    config(
+        materialized='table'
+    )
+}}
+
+WITH
+UDC AS (
+    SELECT
+        CATEGORY,
+        STAGE,
+        SOURCE_CODE,
+        TARGET_CODE,
+        TARGET_NUMBER,
+        COALESCE(NULLIF(
+            TRIM(SPLIT_PART(DESCRIPTION,'---', 2)),
+            ''
+        ), 'ROD') AS DESCRIPTION_TRANSMODE
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }}
+    WHERE
+        1 = 1
+        AND STATUS = 'ATIVO'
+),
+
+PONTOCOLETA_DESTINO_RODO AS (
+    SELECT DISTINCT
+        TO_CHAR(FF.COLLECTION_LOCATION) AS LOCATIONID,
+        COALESCE(
+            UDC_MODAL_2.TARGET_CODE, --RECUPERA DEST DE-PARA CONCAT DEST E MODAL
+            UDC_MODAL_1.TARGET_CODE, --RECUPERA DEST DE-PARA
+            TRIM(FF.DESTINATION),
+            'N/A'
+        ) AS DESTINATION,
+        FF.TRANSPORT_TYPE AS TRANSMODE,
+        MAX(
+            IFF(UPPER(FF.VALIDATED)='YES', 'TRUE', 'FALSE')
+        ) AS ISLANE_OPTIMIZABLE,
+        ROUND(
+            MAX(FF.DISTANCIA + FF.KM_ASFALTO + FF.KM_TERRA) / 500 * 24, 3
+        ) AS DISTANCIA_RODO,
+        MAX(FF.RODO) AS DISTTRANSPORTATIONCOSTPERUNIT,
+        TO_CHAR(TO_DATE(FF.PERIOD, 'MM/YYYY'), 'MM-YYYY') AS MONTH
+    FROM {{ source('pscfl', 'F_MIN_FREIGHT_FORECAST') }} AS FF
+    LEFT JOIN UDC AS UDC_MODAL_1
+        ON
+            TRIM(UDC_MODAL_1.SOURCE_CODE) = TRIM(FF.DESTINATION)
+            AND UDC_MODAL_1.CATEGORY = 'LOCATION_CODE'
+            AND UDC_MODAL_1.STAGE = 'DESTINATION'
+    LEFT JOIN UDC AS UDC_MODAL_2
+        ON
+            TRIM(UDC_MODAL_2.SOURCE_CODE) = CONCAT(
+                TRIM(FF.DESTINATION), TRIM(FF.TRANSPORT_TYPE)
+            )
+            AND UDC_MODAL_2.CATEGORY = 'LOCATION_CODE'
+            AND UDC_MODAL_2.STAGE = 'DESTINATION'
+    WHERE
+        1 = 1
+        AND FF.TRANSPORT_TYPE = 'ROD'
+        AND FF.DESTINATION != 'N/A'
+        AND TO_DATE(FF.PERIOD, 'MM/YYYY') BETWEEN DATE_TRUNC(
+            'MONTH',
+            CURRENT_DATE()
+        ) AND DATE_TRUNC(
+            'MONTH',
+            DATEADD('MONTH', 2, CURRENT_DATE())
+        )
+        AND FF.DISTANCIA != 0
+    GROUP BY
+        FF.COLLECTION_LOCATION,
+        COALESCE(
+            UDC_MODAL_2.TARGET_CODE, --RECUPERA DEST DE-PARA CONCAT DEST E MODAL
+            UDC_MODAL_1.TARGET_CODE, --RECUPERA DEST DE-PARA
+            TRIM(FF.DESTINATION),
+            'N/A'
+        ),
+        FF.TRANSPORT_TYPE,
+        TO_CHAR(TO_DATE(FF.PERIOD, 'MM/YYYY'), 'MM-YYYY')
+),
+
+/* PONTO DE COLETA ATÉ TRANSBORDO VIA RODO */
+/* ORIGEM TABELA DO FREIGHT FORECAST */
+ORIGEM_TRANSBORDO AS (
+    SELECT DISTINCT
+        TO_CHAR(FF.COLLECTION_LOCATION) AS LOCATIONID,
+        FF.TRANSPORT_TYPE AS DESTINO,
+        'ROD' AS TRANSMODE,
+        MAX(
+            IFF(UPPER(FF.VALIDATED)='YES', 'TRUE', 'FALSE')
+        ) AS ISLANE_OPTIMIZABLE,
+        ROUND(
+            MAX(FF.DISTANCIA + FF.KM_ASFALTO + FF.KM_TERRA) / 500 * 24, 3
+        ) AS DISTANCIA_RODO,
+        MAX(FF.RODO) AS DISTTRANSPORTATIONCOSTPERUNIT,
+        TO_CHAR(TO_DATE(FF.PERIOD, 'MM/YYYY'), 'MM-YYYY') AS MONTH
+    FROM {{ source('pscfl', 'F_MIN_FREIGHT_FORECAST') }} AS FF
+    WHERE
+        1 = 1
+        AND FF.TRANSPORT_TYPE != 'ROD'
+        AND FF.DESTINATION != 'N/A'
+        AND COALESCE(FF.DISTANCIA, 0) != 0
+        AND TO_DATE(FF.PERIOD, 'MM/YYYY') BETWEEN DATE_TRUNC(
+            'MONTH',
+            CURRENT_DATE()
+        ) AND DATE_TRUNC(
+            'MONTH',
+            DATEADD('MONTH', 2, CURRENT_DATE())
+        )
+    GROUP BY
+        FF.COLLECTION_LOCATION,
+        FF.TRANSPORT_TYPE,
+        TO_CHAR(TO_DATE(FF.PERIOD, 'MM/YYYY'), 'MM-YYYY')
+),
+
+ORIGEM_ARMAZEM_ENTREGA AS (
+    SELECT DISTINCT
+        SC.SOURCE,
+        L.LOCATION_UNIT_ID AS BP_ENTREGA,
+        'ROD' AS TRANSMODE,
+        FF.ISLANE_OPTIMIZABLE,
+        ROUND(FF.DISTANCIA_RODO, 3) AS DISTANCIA_RODO,
+        FF.DISTTRANSPORTATIONCOSTPERUNIT,
+        FF.MONTH
+    FROM {{ ref('sourcing_contract_details_master') }} AS SC
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS L
+        ON SC.DELIVERY = L.LOCATIONID
+    INNER JOIN (
+        SELECT DISTINCT
+            FF_INTERNA.COLLECTION_LOCATION,
+            FF_INTERNA.CIDADE_REFERENCIA,
+            MAX(
+                CASE
+                    WHEN (
+                        ABS(FF_INTERNA.KM_ASFALTO) + ABS(FF_INTERNA.KM_TERRA)
+                    ) = 0
+                        THEN 24
+                    ELSE (ABS(FF_INTERNA.KM_ASFALTO) + ABS(FF_INTERNA.KM_TERRA))
+                END
+            ) AS DISTANCIA_RODO,
+            MAX(FF_INTERNA.RODO) AS DISTTRANSPORTATIONCOSTPERUNIT, --noqa
+            TO_CHAR(TO_DATE(FF_INTERNA.PERIOD, 'MM/YYYY'), 'MM-YYYY') AS MONTH,
+            MAX(IFF(
+                UPPER(FF_INTERNA.VALIDATED)='YES', 'TRUE', 'FALSE'
+            )) AS ISLANE_OPTIMIZABLE
+        FROM {{ source('pscfl', 'F_MIN_FREIGHT_FORECAST') }} AS FF_INTERNA
+        WHERE
+            1 = 1
+            AND TO_DATE(FF_INTERNA.PERIOD,'MM/YYYY') BETWEEN DATE_TRUNC(
+                'MONTH',
+                CURRENT_DATE()
+            ) AND DATE_TRUNC(
+                'MONTH',
+                DATEADD('MONTH', 2, CURRENT_DATE())
+            )
+            AND FF_INTERNA.TRANSPORT_TYPE = 'ROD'
+        GROUP BY
+            FF_INTERNA.COLLECTION_LOCATION,
+            FF_INTERNA.CIDADE_REFERENCIA,
+            TO_CHAR(TO_DATE(FF_INTERNA.PERIOD, 'MM/YYYY'), 'MM-YYYY')
+    ) AS FF
+        ON
+            SC.SOURCE = TO_CHAR(FF.COLLECTION_LOCATION)
+            AND REPLACE(
+                TRANSLATE(L.CITY, 'ÁÉÍÓÚÃÕÂÊÔÇ', 'AEIOUAOAEOC'), ' ', ''
+            ) = FF.CIDADE_REFERENCIA
+),
+
+FILIAL_DESTINO AS (
+    SELECT DISTINCT
+        L.LOCATION_UNIT_ID AS LOCATIONID,
+        COALESCE(
+            UDC_MODAL_2.TARGET_CODE, --RECUPERA DEST DE-PARA CONCAT DEST E MODAL
+            UDC_MODAL_1.TARGET_CODE, --RECUPERA DEST DE-PARA
+            TRIM(BL.DESTINO),
+            'N/A'
+        ) AS DESTINATION,
+        BL.MODAL,
+        ROUND(
+            CASE
+                WHEN (SUM(
+                    ABS(COALESCE(FF.DISTANCIA, 0))
+                ) / COUNT(*) / 500) * 24 = 0
+                    THEN 24
+                ELSE (SUM(ABS(FF.DISTANCIA)) / COUNT(*) / 500) * 24
+            END, 3
+        ) AS DISTANCIA_RODO,
+        MAX(
+            IFF(L.LOCATION_TYPE = 'FÍSICA', BL.RODO, 0)
+        ) AS DISTTRANSPORTATIONCOSTPERUNIT,
+        TO_CHAR(BL.REFERENCIA, 'MM-YYYY') AS MONTH
+    FROM {{ source('pscfl', 'F_MIN_BOGEY_LIST') }} AS BL
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS L
+        ON
+            BL.FILIAL = L.LOCATIONID
+            AND L.ISACTIVE = 'TRUE'
+    LEFT OUTER JOIN {{ source('pscfl', 'F_MIN_FREIGHT_FORECAST') }} AS FF
+        ON
+            REPLACE(TRANSLATE(L.CITY, 'ÁÉÍÓÚÃÕÂÊÔÇ', 'AEIOUAOAEOC'), ' ', '') = FF.CIDADE_REFERENCIA --noqa
+            AND BL.DESTINO = FF.DESTINATION
+            AND FF.TRANSPORT_TYPE = 'ROD'
+    LEFT JOIN UDC AS UDC_MODAL_1
+        ON
+            TRIM(UDC_MODAL_1.SOURCE_CODE) = TRIM(BL.DESTINO)
+            AND UDC_MODAL_1.CATEGORY = 'LOCATION_CODE'
+            AND UDC_MODAL_1.STAGE = 'DESTINATION'
+    LEFT JOIN UDC AS UDC_MODAL_2
+        ON
+            TRIM(UDC_MODAL_2.SOURCE_CODE) = CONCAT(
+                TRIM(BL.DESTINO), TRIM(BL.MODAL)
+            )
+            AND UDC_MODAL_2.CATEGORY = 'LOCATION_CODE'
+            AND UDC_MODAL_2.STAGE = 'DESTINATION'
+    WHERE
+        1 = 1
+        AND BL.RODO > 0
+        AND DATE_TRUNC('MONTH', BL.REFERENCIA) BETWEEN DATE_TRUNC(
+            'MONTH',
+            CURRENT_DATE()
+        ) AND DATE_TRUNC(
+            'MONTH',
+            DATEADD('MONTH', 2, CURRENT_DATE())
+        )
+        AND BL.MODAL = 'ROD'
+    GROUP BY
+        L.LOCATION_UNIT_ID,
+        COALESCE(
+            UDC_MODAL_2.TARGET_CODE, --RECUPERA DEST DE-PARA CONCAT DEST E MODAL
+            UDC_MODAL_1.TARGET_CODE, --RECUPERA DEST DE-PARA
+            TRIM(BL.DESTINO),
+            'N/A'
+        ),
+        BL.MODAL,
+        TO_CHAR(BL.REFERENCIA, 'MM-YYYY')
+),
+
+FILIAL_TRANSBORDO AS (
+    SELECT DISTINCT
+        L.LOCATION_UNIT_ID AS LOCATIONID,
+        CASE
+            WHEN BL.MODAL = 'ROD' THEN BL.DESTINO
+            ELSE BL.MODAL
+        END AS DESTINO,
+        'ROD' AS TRANSMODE,
+        ROUND(
+            (
+                SUM(
+                    CASE
+                        WHEN ABS(COALESCE(FF.DISTANCIA, 0)) = 0
+                            THEN 24
+                        ELSE ABS(FF.DISTANCIA)
+                    END
+                ) / COUNT(*) / 500
+            ) * 24,
+            3
+        ) AS DISTANCIA_RODO,
+        MAX(
+            IFF(L.LOCATION_TYPE = 'FÍSICA', BL.RODO, 0)
+        ) AS DISTTRANSPORTATIONCOSTPERUNIT,
+        TO_CHAR(BL.REFERENCIA, 'MM-YYYY') AS MONTH,
+        UDC_DEST.SOURCE_CODE AS LOCATIONID_DEST
+    FROM {{ source('pscfl', 'F_MIN_BOGEY_LIST') }} AS BL
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS L
+        ON
+            BL.FILIAL = L.LOCATIONID
+            AND L.ISACTIVE = 'TRUE'
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS LD
+        ON
+            BL.DESTINO = LD.LOCATION_CODE
+            AND LD.ISACTIVE = 'TRUE'
+    LEFT OUTER JOIN {{ source('pscfl', 'F_MIN_FREIGHT_FORECAST') }} AS FF
+        ON
+            REPLACE(TRANSLATE(L.CITY, 'ÁÉÍÓÚÃÕÂÊÔÇ', 'AEIOUAOAEOC'), ' ', '') = FF.CIDADE_REFERENCIA --noqa
+            AND BL.DESTINO = FF.DESTINATION
+            AND FF.TRANSPORT_TYPE = BL.MODAL
+    LEFT JOIN UDC AS UDC_DEST
+        ON
+            UDC_DEST.CATEGORY = 'LANE'
+            AND UDC_DEST.STAGE = 'DESTINO_BOGEY'
+            AND BL.DESTINO = UDC_DEST.TARGET_CODE
+    WHERE
+        1 = 1
+        AND DATE_TRUNC('MONTH', BL.REFERENCIA) BETWEEN DATE_TRUNC(
+            'MONTH',
+            CURRENT_DATE()
+        ) AND DATE_TRUNC(
+            'MONTH',
+            DATEADD('MONTH', 2, CURRENT_DATE())
+        )
+        AND (
+            BL.MODAL != 'ROD'
+            OR (
+                LD.LOCATION_CODE = BL.DESTINO
+                AND LD.LOCATION_UNIT_STRUCTURE IN (
+                    'TRANSBORDO',
+                    'PORTO FLUVIAL'
+                )
+            )
+        )
+    GROUP BY
+        L.LOCATION_UNIT_ID,
+        CASE
+            WHEN BL.MODAL = 'ROD' THEN BL.DESTINO
+            ELSE BL.MODAL
+        END,
+        TO_CHAR(BL.REFERENCIA, 'MM-YYYY'),
+        UDC_DEST.SOURCE_CODE
+),
+
+TRANSBORDO_DESTINO AS (
+    SELECT DISTINCT
+        COALESCE(
+            UDC_MODAL_2.TARGET_CODE, --RECUPERA DEST DE-PARA CONCAT DEST E MODAL
+            UDC_MODAL_1.TARGET_CODE, --RECUPERA DEST DE-PARA
+            TRIM(BL.DESTINO),
+            'N/A'
+        ) AS DESTINATION,
+        BL.MODAL,
+        TO_CHAR(BL.REFERENCIA, 'MM-YYYY') AS MONTH,
+        MAX(BL.INTERMODAL) AS DISTTRANSPORTATIONCOSTPERUNIT
+    FROM {{ source('pscfl', 'F_MIN_BOGEY_LIST') }} AS BL
+    LEFT JOIN UDC AS UDC_MODAL_1
+        ON
+            TRIM(UDC_MODAL_1.SOURCE_CODE) = TRIM(BL.DESTINO)
+            AND UDC_MODAL_1.CATEGORY = 'LOCATION_CODE'
+            AND UDC_MODAL_1.STAGE = 'DESTINATION'
+    LEFT JOIN UDC AS UDC_MODAL_2
+        ON
+            TRIM(UDC_MODAL_2.SOURCE_CODE) = CONCAT(
+                TRIM(BL.DESTINO), TRIM(BL.MODAL)
+            )
+            AND UDC_MODAL_2.CATEGORY = 'LOCATION_CODE'
+            AND UDC_MODAL_2.STAGE = 'DESTINATION'
+    WHERE
+        1 = 1
+        AND DATE_TRUNC('MONTH', BL.REFERENCIA) BETWEEN DATE_TRUNC(
+            'MONTH',
+            CURRENT_DATE()
+        ) AND DATE_TRUNC(
+            'MONTH',
+            DATEADD('MONTH', 2, CURRENT_DATE())
+        )
+        AND BL.MODAL NOT IN ('ROD', 'ALL')
+        AND BL.INTERMODAL != 0
+    GROUP BY
+        COALESCE(
+            UDC_MODAL_2.TARGET_CODE, UDC_MODAL_1.TARGET_CODE,
+            TRIM(BL.DESTINO), 'N/A'
+        ),
+        BL.MODAL,
+        TO_CHAR(BL.REFERENCIA, 'MM-YYYY')
+),
+
+SOURCE_CIF_DESTINO_RODO AS (
+    SELECT
+        SC_INTERNA.SOURCE,
+        SC_INTERNA.DESTINATION AS DESTINATION,
+        'ROD' AS MODAL,
+        MAX(FF.ISLANE_OPTIMIZABLE) AS ISLANE_OPTIMIZABLE,
+        ROUND(
+            CASE
+                WHEN (SUM(
+                    ABS(COALESCE(FF.DISTANCIA, 0))
+                ) / COUNT(*) / 500) * 24 = 0
+                    THEN 24
+                ELSE (SUM(ABS(FF.DISTANCIA)) / COUNT(*) / 500) * 24
+            END,
+            3
+        ) AS DISTANCIA_RODO,
+        MAX(FF.RODO) AS DISTTRANSPORTATIONCOSTPERUNIT,
+        TO_CHAR(TO_DATE(FF.PERIOD, 'MM/YYYY'), 'MM-YYYY') AS MONTH
+    FROM (
+        SELECT DISTINCT
+            SC.SOURCE,
+            RANK() OVER (
+                PARTITION BY
+                    SC.SOURCE,
+                    COALESCE(TRIM(SC.DESTINATION), 'N/A')
+                ORDER BY SC.DELIVERYSTART DESC, SC.CONTRACTNUMBER DESC
+            ) AS RNK,
+            SC.ORIGINATION AS BP_COMPRA,
+            COALESCE(TRIM(SC.DESTINATION), 'N/A') AS DESTINATION
+        FROM {{ ref('sourcing_contract_details_master') }} AS SC
+        LEFT OUTER JOIN (
+            SELECT DISTINCT
+                FF.COLLECTION_LOCATION,
+                FF.TRANSPORT_TYPE,
+                COALESCE(
+                    UDC_MODAL_2.TARGET_CODE, -- DE-PARA CONCAT DEST E MODAL
+                    UDC_MODAL_1.TARGET_CODE, -- RECUPERA DEST DE-PARA
+                    TRIM(FF.DESTINATION),
+                    'N/A'
+                ) AS DESTINATION
+            FROM {{ source('pscfl', 'F_MIN_FREIGHT_FORECAST') }} AS FF
+            LEFT JOIN UDC AS UDC_MODAL_1
+                ON
+                    TRIM(UDC_MODAL_1.SOURCE_CODE) = TRIM(FF.DESTINATION)
+                    AND UDC_MODAL_1.CATEGORY = 'LOCATION_CODE'
+                    AND UDC_MODAL_1.STAGE = 'DESTINATION'
+            LEFT JOIN UDC AS UDC_MODAL_2
+                ON
+                    TRIM(UDC_MODAL_2.SOURCE_CODE) = CONCAT(
+                        TRIM(FF.DESTINATION), TRIM(FF.TRANSPORT_TYPE)
+                    )
+                    AND UDC_MODAL_2.CATEGORY = 'LOCATION_CODE'
+                    AND UDC_MODAL_2.STAGE = 'DESTINATION'
+            WHERE
+                1 = 1
+                AND FF.DESTINATION != 'N/A'
+                AND TO_DATE(FF.PERIOD, 'MM/YYYY') BETWEEN DATE_TRUNC(
+                    'MONTH',
+                    CURRENT_DATE()
+                ) AND DATE_TRUNC(
+                    'MONTH',
+                    DATEADD('MONTH', 2, CURRENT_DATE())
+                )
+        ) AS FF
+            ON
+                SC.SOURCE = TO_CHAR(FF.COLLECTION_LOCATION)
+                AND (
+                    CASE
+                        WHEN SUBSTR(TRIM(SC.DESTINATION), 1, 3) = 'MI '
+                            THEN SUBSTR(TRIM(SC.DESTINATION), 4, 3)
+                        ELSE COALESCE(TRIM(SC.DESTINATION), 'N/A')
+                    END
+                ) = FF.DESTINATION
+                AND SC.TRANSMODE = FF.TRANSPORT_TYPE
+        WHERE
+            1 = 1
+            AND FF.COLLECTION_LOCATION IS NULL
+            AND SC.TRANSMODE = 'ROD'
+        QUALIFY RNK = 1
+    ) AS SC_INTERNA
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS L
+        ON SC_INTERNA.BP_COMPRA = L.LOCATIONID
+    LEFT OUTER JOIN (
+        SELECT DISTINCT
+            FF_INTERNA.CIDADE_REFERENCIA,
+            FF_INTERNA.DESTINATION,
+            FF_INTERNA.DISTANCIA,
+            FF_INTERNA.RODO,
+            FF_INTERNA.TRANSPORT_TYPE,
+            FF_INTERNA.PERIOD,
+            IFF(
+                UPPER(FF_INTERNA.VALIDATED)='YES', 'TRUE', 'FALSE'
+            ) AS ISLANE_OPTIMIZABLE,
+        FROM {{ source('pscfl', 'F_MIN_FREIGHT_FORECAST') }} AS FF_INTERNA
+        WHERE TO_DATE(FF_INTERNA.PERIOD, 'MM/YYYY') BETWEEN DATE_TRUNC(
+            'MONTH',
+            CURRENT_DATE()
+        ) AND DATE_TRUNC(
+            'MONTH',
+            DATEADD('MONTH', 2, CURRENT_DATE())
+        )
+
+    ) AS FF
+        ON
+            REPLACE(TRANSLATE(L.CITY, 'ÁÉÍÓÚÃÕÂÊÔÇ', 'AEIOUAOAEOC'), ' ', '') = FF.CIDADE_REFERENCIA --noqa
+            AND SC_INTERNA.DESTINATION = FF.DESTINATION
+            AND FF.TRANSPORT_TYPE = 'ROD'
+    GROUP BY
+        SC_INTERNA.SOURCE,
+        SC_INTERNA.DESTINATION,
+        TO_CHAR(TO_DATE(FF.PERIOD, 'MM/YYYY'), 'MM-YYYY')
+),
+
+SOURCE_CIF_DESTINO_MODAL AS (
+    SELECT
+        SC_INTERNA.SOURCE,
+        SC_INTERNA.TRANSMODE AS DESTINO,
+        'ROD' AS TRANSMODE,
+        MAX(FF.ISLANE_OPTIMIZABLE) AS ISLANE_OPTIMIZABLE,
+        ROUND(
+            CASE
+                WHEN (SUM(
+                    ABS(COALESCE(FF.DISTANCIA, 0))
+                ) / COUNT(*) / 500) * 24 = 0
+                    THEN 24
+                ELSE (SUM(ABS(FF.DISTANCIA)) / COUNT(*) / 500) * 24
+            END,
+            3
+        ) AS DISTANCIA_RODO,
+        MAX(FF.RODO) AS DISTTRANSPORTATIONCOSTPERUNIT,
+        TO_CHAR(TO_DATE(FF.PERIOD, 'MM/YYYY'), 'MM-YYYY') AS MONTH
+    FROM (
+        SELECT DISTINCT
+            SC.SOURCE,
+            RANK() OVER (
+                PARTITION BY SC.SOURCE, SC.TRANSMODE
+                ORDER BY SC.DELIVERYSTART DESC, SC.CONTRACTNUMBER DESC
+            ) AS RNK,
+            SC.ORIGINATION AS BP_COMPRA,
+            SC.TRANSMODE,
+            SC.DESTINATION
+        FROM {{ ref('sourcing_contract_details_master') }} AS SC
+        LEFT JOIN (
+            SELECT DISTINCT
+                FF.COLLECTION_LOCATION,
+                FF.TRANSPORT_TYPE
+            FROM {{ source('pscfl', 'F_MIN_FREIGHT_FORECAST') }} AS FF
+            WHERE
+                1 = 1
+                AND FF.DESTINATION != 'N/A'
+                AND TO_DATE(FF.PERIOD,'MM/YYYY') BETWEEN DATE_TRUNC(
+                    'MONTH',
+                    CURRENT_DATE()
+                ) AND DATE_TRUNC(
+                    'MONTH',
+                    DATEADD('MONTH', 2, CURRENT_DATE())
+                )
+        ) AS FF
+            ON
+                SC.SOURCE = TO_CHAR(FF.COLLECTION_LOCATION)
+                AND SC.TRANSMODE = FF.TRANSPORT_TYPE
+        WHERE
+            1 = 1
+            AND FF.COLLECTION_LOCATION IS NULL
+            AND SC.TRANSMODE != 'ROD'
+        QUALIFY RNK = 1
+    ) AS SC_INTERNA
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS L
+        ON SC_INTERNA.BP_COMPRA = L.LOCATIONID
+    LEFT OUTER JOIN (
+        SELECT DISTINCT
+            FF_INTERNA.CIDADE_REFERENCIA,
+            FF_INTERNA.DESTINATION,
+            FF_INTERNA.DISTANCIA,
+            FF_INTERNA.RODO,
+            FF_INTERNA.TRANSPORT_TYPE,
+            FF_INTERNA.PERIOD,
+            IFF(
+                    UPPER(FF_INTERNA.VALIDATED)='YES', 'TRUE', 'FALSE'
+                ) AS ISLANE_OPTIMIZABLE,
+        FROM {{ source('pscfl', 'F_MIN_FREIGHT_FORECAST') }} AS FF_INTERNA
+        WHERE TO_DATE(FF_INTERNA.PERIOD, 'MM/YYYY') BETWEEN DATE_TRUNC(
+            'MONTH',
+            CURRENT_DATE()
+        ) AND DATE_TRUNC(
+            'MONTH',
+            DATEADD('MONTH', 2, CURRENT_DATE())
+        )
+    ) AS FF
+        ON
+            REPLACE(TRANSLATE(L.CITY, 'ÁÉÍÓÚÃÕÂÊÔÇ', 'AEIOUAOAEOC'), ' ', '') = FF.CIDADE_REFERENCIA --noqa
+            AND SC_INTERNA.DESTINATION = FF.DESTINATION
+            AND FF.TRANSPORT_TYPE = SC_INTERNA.TRANSMODE
+    GROUP BY
+        SC_INTERNA.SOURCE,
+        SC_INTERNA.TRANSMODE,
+        TO_CHAR(TO_DATE(FF.PERIOD, 'MM/YYYY'), 'MM-YYYY')
+),
+
+SOURCE_CIF_BP_ENTREGA AS (
+    SELECT DISTINCT
+        SC_INTERNA.SOURCE,
+        SC_INTERNA.LOCATION_UNIT_ID,
+        'ROD' AS TRANSMODE,
+        FF.ISLANE_OPTIMIZABLE,
+        CASE
+            WHEN COALESCE(ROUND((FF.DISTANCIA_RODO / 500) * 24, 0), 1) = 0
+                THEN 1
+            ELSE COALESCE(ROUND((FF.DISTANCIA_RODO / 500) * 24, 0), 1)
+        END AS DISTANCIA_RODO,
+        FF.RODO AS DISTTRANSPORTATIONCOSTPERUNIT,
+        TO_CHAR(TO_DATE(FF.PERIOD, 'MM/YYYY'), 'MM-YYYY') AS MONTH
+    FROM (
+        SELECT DISTINCT
+            SC.DELIVERY,
+            SC.SOURCE,
+            REPLACE(
+                TRANSLATE(L.CITY, 'ÁÉÍÓÚÃÕÂÊÔÇ', 'AEIOUAOAEOC'), ' ', ''
+            ) AS CITY,
+            RANK() OVER (
+                PARTITION BY SC.SOURCE, L.LOCATION_UNIT_ID
+                ORDER BY SC.DELIVERYSTART DESC, SC.CONTRACTNUMBER DESC
+            ) AS RNK,
+            L.LOCATION_UNIT_ID
+        FROM {{ ref('sourcing_contract_details_master') }} AS SC
+        INNER JOIN {{ ref('tab_location_internal_stg') }} AS L
+            ON
+                L.LOCATIONID = SC.DELIVERY
+                --AND SC.DELIVERY = SC.ORIGINATION
+        LEFT JOIN (
+            SELECT DISTINCT
+                FF.COLLECTION_LOCATION,
+                FF.CIDADE_REFERENCIA
+            FROM {{ source('pscfl', 'F_MIN_FREIGHT_FORECAST') }} AS FF
+            WHERE
+                1 = 1
+                AND FF.DESTINATION != 'N/A'
+                AND TO_DATE(FF.PERIOD,'MM/YYYY') BETWEEN DATE_TRUNC(
+                    'MONTH',
+                    CURRENT_DATE()
+                ) AND DATE_TRUNC(
+                    'MONTH',
+                    DATEADD('MONTH', 2, CURRENT_DATE())
+                )
+        ) AS FF
+            ON
+                SC.SOURCE = TO_CHAR(FF.COLLECTION_LOCATION)
+                AND FF.CIDADE_REFERENCIA = REPLACE(
+                    TRANSLATE(L.CITY, 'ÁÉÍÓÚÃÕÂÊÔÇ', 'AEIOUAOAEOC'), ' ', ''
+                )
+        WHERE
+            1 = 1
+            AND FF.COLLECTION_LOCATION IS NULL
+        QUALIFY RNK = 1
+    ) AS SC_INTERNA
+    LEFT JOIN (
+        SELECT
+            L.LOCATION_UNIT_ID,
+            L.LOCATIONID,
+            FF_INTERNA.CIDADE_REFERENCIA,
+            MAX(
+                CASE
+                    WHEN (
+                        ABS(FF_INTERNA.KM_ASFALTO) + ABS(FF_INTERNA.KM_TERRA)
+                    ) = 0
+                        THEN 1
+                    ELSE (
+                        ABS(FF_INTERNA.KM_ASFALTO) + ABS(FF_INTERNA.KM_TERRA)
+                    )
+                END
+            ) AS DISTANCIA_RODO,
+            MAX(FF_INTERNA.RODO) AS RODO,
+            FF_INTERNA.PERIOD,
+            MAX(IFF(
+                UPPER(FF_INTERNA.VALIDATED)='YES', 'TRUE', 'FALSE'
+            )) AS ISLANE_OPTIMIZABLE
+        FROM {{ source('pscfl', 'F_MIN_FREIGHT_FORECAST') }} AS FF_INTERNA
+        INNER JOIN {{ ref('tab_location_internal_stg') }} AS L
+            ON
+                FF_INTERNA.CIDADE_REFERENCIA = REPLACE(
+                    TRANSLATE(L.CITY, 'ÁÉÍÓÚÃÕÂÊÔÇ', 'AEIOUAOAEOC'), ' ', ''
+                )
+        WHERE
+            1 = 1
+            AND TO_DATE(FF_INTERNA.PERIOD,'MM/YYYY') BETWEEN DATE_TRUNC(
+                'MONTH',
+                CURRENT_DATE()
+            ) AND DATE_TRUNC(
+                'MONTH',
+                DATEADD('MONTH', 2, CURRENT_DATE())
+            )
+        GROUP BY
+            L.LOCATIONID,
+            L.LOCATION_UNIT_ID,
+            FF_INTERNA.CIDADE_REFERENCIA,
+            FF_INTERNA.PERIOD
+    ) AS FF
+        ON FF.LOCATION_UNIT_ID = SC_INTERNA.LOCATION_UNIT_ID
+    WHERE
+        1 = 1
+        AND FF.DISTANCIA_RODO IS NOT NULL
+),
+
+LEADTIME_TRANSBORDO_DESTINO AS (
+    SELECT
+        SOURCE_CODE AS LOCATION_FROM_IBP_ASSET,
+        TARGET_CODE AS LOCATION_TO_IBP_ASSET,
+        TARGET_NUMBER::DECIMAL(20, 3) AS LEADTIME
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }}
+    WHERE
+        CATEGORY = 'LANE'
+        AND STAGE = 'ITEM_LANE_TRANSMODE'
+        AND STATUS = 'ATIVO'
+),
+
+SHIPMENT_OPTIMIZATION AS (
+    SELECT DISTINCT
+    CONCAT(
+        LS.LOCATION_UNIT_ID, '-',
+        LD.LOCATION_UNIT_ID, '-',
+        CASE
+            WHEN LS.LOCATION_UNIT_STRUCTURE IN ('PORTO FLUVIAL','TRANSBORDO')
+            THEN LS.LOCATION_CODE
+            ELSE 'ROD'
+        END
+    ) AS LANEID
+    FROM {{ ref('tab_shipment_loads_faturados_jde_stg') }} AS S
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS LS
+        ON S.BRANCH_PLANT_SOURCE = LS.LOCATIONID
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS LD
+        ON S.BRANCH_PLANT_DESTINATION = LD.LOCATIONID
+    WHERE
+        1 = 1
+        AND S.INVOICE_ISSUE_DATE >= CURRENT_DATE() - 180
+    GROUP BY 1
+    HAVING COUNT(*) > 3
+),
+
+ITEMLANETRANSMODE_TEMP AS (
+    SELECT
+        CONCAT(L.LOCATIONID, '-', LD.LOCATIONID, '-', ORIGEM_DESTINO.TRANSMODE) AS BODLANEID,
+        ORIGEM_DESTINO.TRANSMODE,
+        'GRAOS' AS ITEMID,
+        COALESCE(ORIGEM_DESTINO.DISTANCIA_RODO, 0) AS LEADTIME,
+        0 AS LOTSIZEMIN,
+        'Q1' AS QUERY,
+        ORIGEM_DESTINO.DISTTRANSPORTATIONCOSTPERUNIT,
+        ORIGEM_DESTINO.MONTH,
+        ORIGEM_DESTINO.ISLANE_OPTIMIZABLE
+    FROM PONTOCOLETA_DESTINO_RODO AS ORIGEM_DESTINO
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            ORIGEM_DESTINO.LOCATIONID = L.LOCATIONID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'PONTO DE COLETA', 'CLIENTE OUTBOUND'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            ORIGEM_DESTINO.DESTINATION = LD.LOCATION_CODE
+            AND LD.LOCATION_UNIT_STRUCTURE IN (
+                'PORTO MARÍTIMO', 'FÁBRICA', 'MERCADO INTERNO'
+            )
+
+    UNION
+
+    SELECT
+        CONCAT(L.LOCATION_UNIT_ID, '-', LD.LOCATIONID, '-', ORIGEM_TRANSBORDO.TRANSMODE) AS BODLANEID,
+        ORIGEM_TRANSBORDO.TRANSMODE,
+        'GRAOS' AS ITEMID,
+        COALESCE(ORIGEM_TRANSBORDO.DISTANCIA_RODO, 0) AS LEADTIME,
+        0 AS LOTSIZEMIN,
+        'Q2' AS QUERY,
+        ORIGEM_TRANSBORDO.DISTTRANSPORTATIONCOSTPERUNIT,
+        ORIGEM_TRANSBORDO.MONTH,
+        ORIGEM_TRANSBORDO.ISLANE_OPTIMIZABLE
+    FROM ORIGEM_TRANSBORDO
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS L
+        ON
+            ORIGEM_TRANSBORDO.LOCATIONID = L.LOCATION_UNIT_ID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'PONTO DE COLETA', 'CLIENTE OUTBOUND'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            ORIGEM_TRANSBORDO.DESTINO = LD.LOCATION_CODE
+            AND LD.LOCATION_UNIT_STRUCTURE IN ('TRANSBORDO', 'PORTO FLUVIAL')
+
+    UNION
+
+    SELECT
+        CONCAT(L.LOCATIONID, '-', LD.LOCATIONID, '-', FILIAL_DESTINO.MODAL) AS BODLANEID,
+        FILIAL_DESTINO.MODAL,
+        'GRAOS' AS ITEMID,
+        COALESCE(FILIAL_DESTINO.DISTANCIA_RODO, 0) AS LEADTIME,
+        0 AS LOTSIZEMIN,
+        'Q3' AS QUERY,
+        FILIAL_DESTINO.DISTTRANSPORTATIONCOSTPERUNIT,
+        FILIAL_DESTINO.MONTH,
+        CASE
+            WHEN SHIP.LANEID IS NOT NULL
+                THEN 'TRUE'
+                ELSE 'FALSE'
+        END AS ISLANE_OPTIMIZABLE
+    FROM FILIAL_DESTINO
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            FILIAL_DESTINO.LOCATIONID = L.LOCATIONID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'ARMAZÉM', 'ESCRITÓRIO', 'FÁBRICA', 'MERCADO INTERNO'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            FILIAL_DESTINO.DESTINATION = LD.LOCATION_CODE
+            AND LD.LOCATION_UNIT_STRUCTURE IN (
+                'PORTO MARÍTIMO', 'FÁBRICA', 'MERCADO INTERNO'
+            )
+    LEFT JOIN SHIPMENT_OPTIMIZATION AS SHIP
+        ON CONCAT(
+            L.LOCATIONID, '-', LD.LOCATIONID, '-', FILIAL_DESTINO.MODAL
+        ) = SHIP.LANEID
+
+    UNION
+
+    SELECT
+        CONCAT(L.LOCATIONID, '-', LD.LOCATIONID, '-', FILIAL_TRANSBORDO.TRANSMODE) AS BODLANEID,
+        FILIAL_TRANSBORDO.TRANSMODE,
+        'GRAOS' AS ITEMID,
+        COALESCE(FILIAL_TRANSBORDO.DISTANCIA_RODO, 0) AS LEADTIME,
+        0 AS LOTSIZEMIN,
+        'Q4' AS QUERY,
+        FILIAL_TRANSBORDO.DISTTRANSPORTATIONCOSTPERUNIT,
+        FILIAL_TRANSBORDO.MONTH,
+        CASE
+            WHEN SHIP.LANEID IS NOT NULL
+                THEN 'TRUE'
+                ELSE 'FALSE'
+        END AS ISLANE_OPTIMIZABLE
+    FROM FILIAL_TRANSBORDO
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            FILIAL_TRANSBORDO.LOCATIONID = L.LOCATIONID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'ARMAZÉM', 'ESCRITÓRIO', 'FÁBRICA', 'MERCADO INTERNO'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            FILIAL_TRANSBORDO.DESTINO = LD.LOCATION_CODE
+            AND LD.LOCATION_UNIT_STRUCTURE IN ('TRANSBORDO', 'PORTO FLUVIAL')
+            AND COALESCE(
+                FILIAL_TRANSBORDO.LOCATIONID_DEST, LD.LOCATIONID
+            ) = LD.LOCATIONID
+    LEFT JOIN SHIPMENT_OPTIMIZATION AS SHIP
+        ON CONCAT(
+            L.LOCATIONID, '-', LD.LOCATIONID, '-', FILIAL_TRANSBORDO.TRANSMODE
+        ) = SHIP.LANEID
+
+    UNION
+
+    SELECT
+        CONCAT(L.LOCATIONID, '-', LD.LOCATIONID, '-', L.LOCATION_CODE) AS BODLANEID,
+        L.LOCATION_CODE AS TRANSMODE,
+        'GRAOS' AS ITEMID,
+        COALESCE(LEADTIME_TRANSBORDO_DESTINO.LEADTIME, 0) AS LEADTIME,
+        -- LOTSIZEMIN_TRANSBORDO_DESTINO.LOTSIZEMIN,
+        0 AS LOTSIZEMIN,
+        'Q5' AS QUERY,
+        TRANSBORDO_DESTINO.DISTTRANSPORTATIONCOSTPERUNIT,
+        TRANSBORDO_DESTINO.MONTH,
+        CASE
+            WHEN SHIP.LANEID IS NOT NULL
+                THEN 'TRUE'
+                ELSE 'FALSE'
+        END AS ISLANE_OPTIMIZABLE
+    FROM TRANSBORDO_DESTINO
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            TRANSBORDO_DESTINO.MODAL = L.LOCATION_CODE
+            AND L.LOCATION_UNIT_STRUCTURE IN ('TRANSBORDO', 'PORTO FLUVIAL')
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            TRANSBORDO_DESTINO.DESTINATION = LD.LOCATION_CODE
+            AND LD.LOCATION_UNIT_STRUCTURE IN ('PORTO MARÍTIMO')
+    LEFT JOIN LEADTIME_TRANSBORDO_DESTINO
+        ON
+            L.LOCATION_IBP_ASSET = LEADTIME_TRANSBORDO_DESTINO.LOCATION_FROM_IBP_ASSET
+            AND LD.LOCATION_IBP_ASSET = LEADTIME_TRANSBORDO_DESTINO.LOCATION_TO_IBP_ASSET
+    LEFT JOIN SHIPMENT_OPTIMIZATION AS SHIP
+        ON CONCAT(
+            L.LOCATIONID, '-', LD.LOCATIONID, '-', L.LOCATION_CODE
+        ) = SHIP.LANEID
+
+    UNION
+
+    SELECT
+        CONCAT(L.LOCATIONID, '-', LD.LOCATIONID, '-', SOURCE_CIF_DESTINO_RODO.MODAL) AS BODLANEID,
+        SOURCE_CIF_DESTINO_RODO.MODAL AS TRANSMODE,
+        -- ITEM.ITEMID,
+        'GRAOS' AS ITEMID,
+        COALESCE(SOURCE_CIF_DESTINO_RODO.DISTANCIA_RODO, 0) AS LEADTIME,
+        0 AS LOTSIZEMIN,
+        'Q6' AS QUERY,
+        SOURCE_CIF_DESTINO_RODO.DISTTRANSPORTATIONCOSTPERUNIT,
+        SOURCE_CIF_DESTINO_RODO.MONTH,
+        SOURCE_CIF_DESTINO_RODO.ISLANE_OPTIMIZABLE
+    FROM SOURCE_CIF_DESTINO_RODO
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            SOURCE_CIF_DESTINO_RODO.SOURCE = L.LOCATIONID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'PONTO DE COLETA', 'CLIENTE OUTBOUND'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            SOURCE_CIF_DESTINO_RODO.DESTINATION = LD.LOCATION_CODE
+            AND LD.LOCATION_UNIT_STRUCTURE IN (
+                'PORTO MARÍTIMO', 'FÁBRICA', 'MERCADO INTERNO'
+            )
+
+    UNION
+
+    SELECT
+        CONCAT(
+            L.LOCATIONID, '-',
+            LD.LOCATIONID, '-',
+            SOURCE_CIF_DESTINO_MODAL.TRANSMODE
+        ) AS BODLANEID,
+        SOURCE_CIF_DESTINO_MODAL.TRANSMODE AS TRANSMODE,
+        'GRAOS' AS ITEMID,
+        COALESCE(SOURCE_CIF_DESTINO_MODAL.DISTANCIA_RODO, 0) AS LEADTIME,
+        0 AS LOTSIZEMIN,
+        'Q7' AS QUERY,
+        SOURCE_CIF_DESTINO_MODAL.DISTTRANSPORTATIONCOSTPERUNIT,
+        SOURCE_CIF_DESTINO_MODAL.MONTH,
+        SOURCE_CIF_DESTINO_MODAL.ISLANE_OPTIMIZABLE
+    FROM SOURCE_CIF_DESTINO_MODAL
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            SOURCE_CIF_DESTINO_MODAL.SOURCE = L.LOCATIONID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'PONTO DE COLETA', 'CLIENTE OUTBOUND'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            SOURCE_CIF_DESTINO_MODAL.DESTINO = LD.LOCATION_CODE
+            AND LD.LOCATION_UNIT_STRUCTURE IN (
+                'TRANSBORDO', 'PORTO FLUVIAL'
+            )
+
+    UNION
+
+    SELECT
+        CONCAT(
+            L.LOCATIONID, '-',
+            LD.LOCATIONID, '-',
+            ORIGEM_ARMAZEM_ENTREGA.TRANSMODE
+        ) AS BODLANEID,
+        ORIGEM_ARMAZEM_ENTREGA.TRANSMODE,
+        'GRAOS' AS ITEMID,
+        COALESCE(ORIGEM_ARMAZEM_ENTREGA.DISTANCIA_RODO, 0) AS LEADTIME,
+        0 AS LOTSIZEMIN,
+        'Q8' AS QUERY,
+        ORIGEM_ARMAZEM_ENTREGA.DISTTRANSPORTATIONCOSTPERUNIT,
+        ORIGEM_ARMAZEM_ENTREGA.MONTH,
+        ORIGEM_ARMAZEM_ENTREGA.ISLANE_OPTIMIZABLE
+    FROM ORIGEM_ARMAZEM_ENTREGA
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            ORIGEM_ARMAZEM_ENTREGA.SOURCE = L.LOCATIONID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'PONTO DE COLETA', 'CLIENTE OUTBOUND'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            ORIGEM_ARMAZEM_ENTREGA.BP_ENTREGA = LD.LOCATIONID
+            AND LD.LOCATION_UNIT_STRUCTURE IN ('ARMAZÉM', 'ESCRITÓRIO')
+
+    UNION
+
+    SELECT
+        CONCAT(
+            L.LOCATIONID, '-',
+            LD.LOCATIONID, '-',
+            SOURCE_CIF_BP_ENTREGA.TRANSMODE
+        ) AS BODLANEID,
+        SOURCE_CIF_BP_ENTREGA.TRANSMODE,
+        'GRAOS' AS ITEMID,
+        COALESCE(SOURCE_CIF_BP_ENTREGA.DISTANCIA_RODO, 0) AS LEADTIME,
+        0 AS LOTSIZEMIN,
+        'Q9' AS QUERY,
+        SOURCE_CIF_BP_ENTREGA.DISTTRANSPORTATIONCOSTPERUNIT,
+        SOURCE_CIF_BP_ENTREGA.MONTH,
+        SOURCE_CIF_BP_ENTREGA.ISLANE_OPTIMIZABLE
+    FROM SOURCE_CIF_BP_ENTREGA
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON
+            SOURCE_CIF_BP_ENTREGA.SOURCE = L.LOCATIONID
+            AND L.LOCATION_UNIT_STRUCTURE IN (
+                'PONTO DE COLETA', 'CLIENTE OUTBOUND'
+            )
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            SOURCE_CIF_BP_ENTREGA.LOCATION_UNIT_ID = LD.LOCATIONID
+            AND LD.LOCATION_UNIT_STRUCTURE IN ('ARMAZÉM', 'ESCRITÓRIO')
+),
+
+ITEMLANETRANSMODE_CONTRATOS AS (
+    SELECT DISTINCT
+        S.SOURCE||'-'||L.LOCATIONID||'-'||'ROD' AS BODLANEID,
+        'ROD' AS TRANSMODE,
+        I.ITEMSTAGE AS ITEMID,
+        24 AS LEADTIME,
+        0 AS LOTSIZEMIN,
+        0 AS DISTTRANSPORTATIONCOSTPERUNIT,
+        NULL AS MONTH,
+        NULL AS ISLANE_OPTIMIZABLE,
+        'Q10' AS QUERY
+    FROM {{ ref('sourcing_contract_details_master') }} AS S
+    INNER JOIN {{ ref('item_master') }} AS I
+        ON S.ITEMID = I.ITEM
+    INNER JOIN {{ ref('location_master') }} AS L
+        ON S.DESTINATION = L.LOCATION_CODE
+    WHERE
+        1 = 1
+        AND S.TORECEIVETOTAL > 0
+        AND I.ITEMSTAGE = 'GRAOS'
+        AND L.LOCATION_UNIT_STRUCTURE = 'PORTO MARÍTIMO'
+        AND S.FREIGHTTYPE = 'CIF'
+),
+
+ITEMLANETRANSMODE_SALES AS (
+    SELECT
+        CONCAT_WS('-', L.LOCATION_UNIT_ID, S.SHIPTO, S.TRANSMODE) AS BODLANEID,
+        S.TRANSMODE AS TRANSMODE,
+        I.ITEMSTAGE AS ITEMID,
+        '0' AS LOTSIZEMIN,
+        'Q11' AS QUERY,
+        1 AS DISTTRANSPORTATIONCOSTPERUNIT,
+        NULL AS "MONTH",
+        NULL AS ISLANE_OPTIMIZABLE,
+        CASE
+            WHEN
+                L.LOCATION_UNIT_STRUCTURE IN ('TRANSBORDO', 'PORTO FLUVIAL')
+                AND D.LOCATION_UNIT_STRUCTURE = 'PORTO MARÍTIMO'
+                THEN 0
+            ELSE 24
+        END AS LEADTIME
+    FROM {{ ref('sales_order_delivery_master') }} AS S
+    INNER JOIN {{ ref('item_master') }} AS I
+        ON S.ITEM = I.ITEM
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS L
+        ON S.SOURCEBP = L.LOCATIONID
+    INNER JOIN {{ ref('location_master') }} AS D
+        ON S.SHIPTO = D.LOCATIONID
+    WHERE
+        1 = 1
+        AND S.FREIGHTTYPE = 'CIF'
+        AND I.L3 = 'INBOUND'
+        AND S.OPERATIONTYPE = 'VEN'
+),
+
+ITEMLANETRANSMODE_UDC AS (
+    SELECT DISTINCT
+        CONCAT(
+            LS.LOCATIONID, '-', LD.LOCATIONID, '-', U.DESCRIPTION_TRANSMODE
+        ) AS BODLANEID,
+        U.DESCRIPTION_TRANSMODE AS TRANSMODE,
+        'GRAOS' AS ITEMID,
+        U.TARGET_NUMBER::DECIMAL(20, 3)  AS LEADTIME,
+        0 AS LOTSIZEMIN,
+        'Q12' AS QUERY,
+        NULL AS DISTTRANSPORTATIONCOSTPERUNIT,
+        NULL AS "MONTH",
+        NULL AS ISLANE_OPTIMIZABLE
+    FROM UDC AS U
+    INNER JOIN {{ ref('location_master') }} AS LS
+        ON
+            U.SOURCE_CODE = LS.LOCATION_IBP_ASSET
+            AND LS.LOCATION_UNIT_STRUCTURE != 'PORTO MARÍTIMO'
+    INNER JOIN {{ ref('location_master') }} AS LD
+        ON
+            U.TARGET_CODE = LD.LOCATION_IBP_ASSET
+    WHERE
+        U.CATEGORY = 'LANE'
+        AND U.STAGE = 'ITEM_LANE_TRANSMODE'
+),
+
+ITEMLANETRANSMODE_BASE AS (
+    SELECT
+        BODLANEID,
+        TRANSMODE,
+        ITEMID,
+        LEADTIME,
+        LOTSIZEMIN,
+        QUERY,
+        DISTTRANSPORTATIONCOSTPERUNIT,
+        MONTH,
+        ISLANE_OPTIMIZABLE
+    FROM ITEMLANETRANSMODE_TEMP
+
+    UNION DISTINCT
+
+    SELECT
+        CAK.BODLANEID,
+        CAK.TRANSMODE,
+        CAK.ITEMID,
+        CAK.LEADTIME,
+        CAK.LOTSIZEMIN,
+        CAK.QUERY,
+        CAK.DISTTRANSPORTATIONCOSTPERUNIT,
+        CAK.MONTH,
+        CAK.ISLANE_OPTIMIZABLE
+    FROM ITEMLANETRANSMODE_CONTRATOS AS CAK
+    LEFT JOIN ITEMLANETRANSMODE_TEMP AS TEMP
+        ON CAK.BODLANEID = TEMP.BODLANEID
+    WHERE
+        1 = 1
+        AND TEMP.BODLANEID IS NULL
+
+    UNION DISTINCT
+
+    SELECT
+        SALES.BODLANEID,
+        SALES.TRANSMODE,
+        SALES.ITEMID,
+        SALES.LEADTIME,
+        SALES.LOTSIZEMIN,
+        SALES.QUERY,
+        SALES.DISTTRANSPORTATIONCOSTPERUNIT,
+        SALES.MONTH,
+        SALES.ISLANE_OPTIMIZABLE
+    FROM ITEMLANETRANSMODE_SALES AS SALES
+    LEFT JOIN ITEMLANETRANSMODE_TEMP AS TEMP
+        ON SALES.BODLANEID = TEMP.BODLANEID
+    LEFT JOIN ITEMLANETRANSMODE_CONTRATOS AS CAK
+        ON SALES.BODLANEID = CAK.BODLANEID
+    WHERE
+        1 = 1
+        AND TEMP.BODLANEID IS NULL
+        AND CAK.BODLANEID IS NULL
+
+    UNION DISTINCT
+
+    SELECT
+        UDC.BODLANEID,
+        UDC.TRANSMODE,
+        UDC.ITEMID,
+        UDC.LEADTIME,
+        UDC.LOTSIZEMIN,
+        UDC.QUERY,
+        UDC.DISTTRANSPORTATIONCOSTPERUNIT,
+        UDC.MONTH,
+        UDC.ISLANE_OPTIMIZABLE
+    FROM ITEMLANETRANSMODE_UDC AS UDC
+    LEFT JOIN ITEMLANETRANSMODE_TEMP AS TEMP
+        ON UDC.BODLANEID = TEMP.BODLANEID
+    LEFT JOIN ITEMLANETRANSMODE_CONTRATOS AS CAK
+        ON UDC.BODLANEID = CAK.BODLANEID
+    LEFT JOIN ITEMLANETRANSMODE_SALES AS SALES
+        ON UDC.BODLANEID = SALES.BODLANEID
+    WHERE
+        1 = 1
+        AND TEMP.BODLANEID IS NULL
+        AND CAK.BODLANEID IS NULL
+        AND SALES.BODLANEID IS NULL
+),
+
+ITEMLANETRANSMODE_FINAL AS (
+    SELECT DISTINCT
+        COALESCE(NULLIF(BODLANEID, ''), 'N/A') AS BODLANEID,
+        COALESCE(NULLIF(TRANSMODE, ''), 'N/A') AS TRANSMODE,
+        COALESCE(NULLIF(ITEMID, ''), 'N/A') AS ITEMID,
+        COALESCE(CEIL(LEADTIME, 0)::DECIMAL(20, 3), 0) AS LEADTIME,
+        COALESCE(LOTSIZEMIN, 0) AS LOTSIZEMIN,
+        COALESCE(
+            DISTTRANSPORTATIONCOSTPERUNIT::DECIMAL(20, 3), 0
+        ) AS DISTTRANSPORTATIONCOSTPERUNIT,
+        MONTH,
+        QUERY,
+        ISLANE_OPTIMIZABLE
+    FROM ITEMLANETRANSMODE_BASE
+)
+
+SELECT *
+FROM ITEMLANETRANSMODE_FINAL
+WHERE
+    1 = 1
+    AND BODLANEID != 'N/A'

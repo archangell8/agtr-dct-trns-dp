@@ -1,0 +1,69 @@
+mef_dct_project:
+  outputs:
+    dev:
+      type: snowflake
+      account: cargill-dev
+      user: THANDY_NORBERTO@CRGL-THIRDPARTY.COM
+      role: MINERVA_DATA_FUNCTION_GDS_DATA_ENGINEER
+      authenticator: externalbrowser
+      database: CASC_DIGITAL_CONTROL_TOWER_DEV
+      warehouse: CASC_SM_TRN_S
+      schema: DIGITAL_CONTROL_TOWER_TRNS
+      threads: 20
+      client_session_keep_alive: False
+      connect_retries: 0
+      connect_timeout: 10
+      retry_on_database_errors: False
+      retry_all: False
+      reuse_connections: False
+      # proxy_host: http://web.prod.proxy.cargill.com
+      # proxy_port: 4200
+
+    qa:
+      type: snowflake
+      account: cargill-dev
+      user: AMANDA_DASILVA@CRGL-THIRDPARTY.COM
+      role: MINERVA_DATA_FUNCTION_GDS_DATA_ENGINEER
+      authenticator: externalbrowser
+      database: CASC_DIGITAL_CONTROL_TOWER_QAS
+      warehouse: CASCSA_DCT_ING_M
+      schema: DIGITAL_CONTROL_TOWER_TRNS
+      threads: 1
+      client_session_keep_alive: False
+      connect_retries: 0
+      connect_timeout: 10
+      retry_on_database_errors: False
+      retry_all: False
+      reuse_connections: False
+      # proxy_host: http://web.prod.proxy.cargill.com
+      # proxy_port: 4200
+
+    prd:
+      type: snowflake
+      account: cargill-prod
+      user: AMANDA_DASILVA@CRGL-THIRDPARTY.COM
+      role: MINERVA_DATA_FUNCTION_GDS_DATA_ENGINEER_PRD
+      authenticator: externalbrowser
+      database: CASC_DIGITAL_CONTROL_TOWER_PRD
+      warehouse: PRD_CASCSA_DCT_TRN_L
+      schema: SUPP_DIGITAL_CONTROL_TOWER_TRNS
+      threads: 1
+      reuse_connections: True
+      # proxy_host: http://web.prod.proxy.cargill.com
+      # proxy_port: 4200
+
+    supp:
+      type: snowflake
+      account: cargill-prod
+      user: THANDY_NORBERTO@CRGL-THIRDPARTY.COM
+      role: MINERVA_DATA_FUNCTION_GDS_DATA_ENGINEER_PRD
+      authenticator: externalbrowser
+      database: CASC_DIGITAL_CONTROL_TOWER_PRD
+      warehouse: PRD_CASCSA_DCT_TRN_L
+      schema: SUPP_DIGITAL_CONTROL_TOWER_TRNS
+      threads: 20
+      reuse_connections: True
+      # proxy_host: http://web.prod.proxy.cargill.com
+      # proxy_port: 4200
+
+  target: dev

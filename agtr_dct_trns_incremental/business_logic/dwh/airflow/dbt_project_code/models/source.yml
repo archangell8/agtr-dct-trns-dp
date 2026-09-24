@@ -1,0 +1,198 @@
+version: 2
+
+# Define the enviroment based on ENVIRONMENT, that exists during the deploy.
+# The macro env_var('ENVIRONMENT', 'dev') will return the vaue for the
+#   $ENVIRONMENT variable, if not exists return the default value 'dev'.
+
+sources:
+  - name: jde
+    database: "{{ 'class_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'class_uat' }}"
+    schema: "{{ 'jde_class_raw_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'jde_class_raw_uat' }}"
+    tables:
+      - name: F4101
+      - name: F41002
+      - name: F4102
+      - name: PRODCTL_F0005
+      - name: F0101
+      - name: F0150
+      - name: F0116
+      # - name: F03012
+      - name: F0006
+      - name: F554006
+      - name: F5549320
+      - name: F5540029
+      # - name: F5538011
+      - name: F38010
+      - name: F4311
+      - name: F5543048
+      - name: F4111
+      - name: F4201
+      - name: F4211
+      - name: F5560509
+      - name: F5543050
+      - name: F5543051
+      - name: F5543220
+      - name: F_PURCHASE_POSITION
+      - name: F5541106
+      - name: F4960
+      # - name: F5549068
+      - name: F5549400
+      - name: F5549015
+      - name: F00092
+      - name: F5562001
+      - name: F4941
+      - name: F49621
+      - name: F43199
+      - name: F5549001
+      - name: F5549701
+      - name: F4930
+      - name: F5549100
+      - name: F554201D
+      - name: F5549200
+      - name: F7601B
+      - name: F4301
+      - name: F5549300
+      - name: F5543064
+      - name: F564310A
+      - name: F5576201
+      - name: FQ72300
+      - name: FQ72301
+      - name: FQ72317
+      - name: FQ72302
+      - name: F40039
+      # - name: F5560101
+      - name: F5549401
+      - name: F41112
+      - name: F0092
+      - name: F554349F
+      - name: F7611B
+      - name: F554901B
+      - name: F554801A
+      - name: F3711
+      - name: F553711Z
+      - name: F41001
+      - name: F5543081
+      - name: F5576523
+      - name: F554201B
+      - name: F76B12TE
+      - name: NEOGRID_EVENTS_FLAT
+      - name: NEOGRID_INVOICES_HEADER
+      - name: NEOGRID_INVOICES_ITEM
+
+  - name: pscfl
+    database: "{{ 'class_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'class_qas' }}"
+    schema: "{{ 'pscfl_class_raw_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'pscfl_class_raw_qas' }}"
+    tables:
+      - name: F_MIN_FREIGHT_FORECAST
+      - name: F_MIN_BOGEY_LIST
+      # - name: F_MIN_TABELA_FILIAL
+      - name: F_MIN_ITEM
+      - name: F_MIN_TRANSMODE
+      - name: F_MIN_CUSTOMER_OTHER
+      # - name: F_MIN_UNLOADINGCAPACITY
+      # - name: F_MIN_LOADINGCAPACITY
+      # - name: F_MIN_TRANSPORTATIONCONTRACTLINE
+      # - name: F_MIN_TRANSPORTATIONCONTRACT
+      # - name: F_MIN_TRANSPORTATIONCONTRACTLINEPERIOD
+      # - name: F_MIN_LOCATIONSTORAGECAPACITY
+      - name: F_MIN_NEW_TRADES_VENDAS
+      - name: F_MIN_VESSEL
+      - name: F_MIN_VESSELPRODUCT
+      - name: F_MIN_PORTWINDOW
+      - name: F_MIN_ATIVO_IBP
+      - name: F_MIN_LOCATION_UNIT
+      - name: F_MIN_LOCATION_OPERATOR
+      - name: F_MIN_LOCATION_AGRUPADA
+      - name: F_MIN_LOCATION_OTHERS
+      - name: F_MIN_LOCATION_UF_STATE
+      # - name: F_MIN_CIDADE_REGIAO
+      - name: F_MIN_ANALISE_CONTRATO
+      - name: F_MIN_EMBARQUE_PORTO
+      - name: F_MIN_LINEUP
+      - name: F_MIN_DEMDESPACTUAL
+      - name: F_MIN_TROCAS_PORTO
+      - name: F_MIN_CALLDIARIO
+      - name: F_MIN_CALLDIARIO_RESUMO
+      - name: F_MIN_DESCARGA_PORTO
+      - name: F_MIN_INVENTARIO_PORTO
+      - name: F_MIN_PSI_IBP_ANALISEPLANTAS_SOLIDOSLIQUIDOS
+      - name: F_MIN_PSI_IBP_ANALISEPLANTAS_ANALISEPROJECAO
+      - name: F_MIN_PSI_IBP_ANALISEPLANTAS_CAPACIDADE
+      - name: F_MIN_PSI_IBP_GRAINS_BASE
+      - name: F_MIN_PSI_IBP_GRAINS_EXPORTACAO
+      - name: F_MIN_PSI_IBP_GRAINS_PROGRAMA
+      - name: F_MIN_DCT_UDC
+      - name: F_MIN_LOCATION_RESTRICTION
+      - name: F_MIN_LOADINGCAPACITY_BASE
+      - name: F_MIN_UNLOADINGCAPACITY_BASE
+      - name: F_MIN_LOCATIONSTORAGECAPACITY_BASE
+      # - name: F_MIN_TRANSPORTATIONCONTRACTLINE_BASE
+      # - name: F_MIN_TRANSPORTATIONCONTRACTLINEPERIOD_BASE
+      # - name: F_MIN_TRANSPORTATIONCONTRACTLINEPERIOD_BASE_CAPACITY
+      - name: F_MIN_TRANSPORTATIONCONTRACTDETAILS_CAPACITY
+      - name: F_MIN_TRANSPORTATIONCONTRACTDETAILS_RAIL
+
+
+  - name: salesforce
+    database: "{{ 'salesforce_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'salesforce_qas' }}"
+    schema: "{{ 'salesforce_sa_stg_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'salesforce_sa_stg_qas' }}"
+    tables:
+      - name: CUSTOMER
+      - name: ACCOUNT
+
+  - name: cmm
+    database: "{{ 'class_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'class_qas' }}"
+    schema:  "{{ 'cmm_class_raw_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'cmm_class_raw_qas' }}"
+    tables:
+      - name: VW_CMM
+
+  - name: ctms
+    database: "{{ 'class_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'class_qas' }}"
+    schema:  "{{ 'ctms_class_raw_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'ctms_class_raw_qas' }}"
+    tables:
+      - name: VW_DCT_TN
+      - name: VW_DCT_EXTRA
+      - name: VW_DCT_LOAD
+      - name: VW_CSF_CT_CONS_SIT
+
+  - name: rds
+    database: "{{ 'class_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'class_qas' }}"
+    schema:  "{{ 'rds_class_raw_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'rds_class_raw_qas' }}"
+    tables:
+      - name: VW_RDS_HISTORIC_DCT
+      # - name: VW_RDS_HISTORIC_CANCELED_DCT
+
+  - name: fts
+    database: "{{ 'class_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'class_qas' }}"
+    schema:  "{{ 'fts_class_raw_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'fts_class_raw_qas' }}"
+    tables:
+      - name: CAK_OVER_UNDER
+      # - name: SHIPPED_SUMMARY
+
+  - name: cmax
+    database: "{{ 'class_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'class_qas' }}"
+    schema:  "{{ 'cmax_class_raw_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'cmax_class_raw_qas' }}"
+    tables:
+      - name: VW_CMAX_INVENTORY
+      - name: VW_CMAX_CONVOYS
+
+  - name: ecopatio
+    database: "{{ 'class_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'class_qas' }}"
+    schema:  "{{ 'ecopatio_class_raw_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'ecopatio_class_raw_qas' }}"
+    tables:
+      - name: STATUS_RAW_VW
+
+  - name: klake
+    database: "{{ 'class_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'class_qas' }}"
+    schema:  "{{ 'casc_sa_sm_raw_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'casc_sa_sm_raw_qas' }}"
+    tables:
+      - name: SM_EVENTS
+      - name: PLANNEDVOLUME
+
+  - name: onet
+    database: "{{ 'class_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'class_qas' }}"
+    schema:  "{{ 'casc_sa_sm_raw_prd' if env_var('ENVIRONMENT', 'dev') == 'prd' else 'casc_sa_sm_raw_qas' }}"
+    tables:
+      - name: MPA_LOCATIONS
+      - name: T1_CATEGORIES_CDP
+      - name: T1_QUANT2_RESULTS_CDP

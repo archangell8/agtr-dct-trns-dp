@@ -1,0 +1,1594 @@
+kind: data
+target: snowflake
+team: casc-latam-data-engineering
+env:
+  dev:
+    snowflake:
+      database: CASC_DIGITAL_CONTROL_TOWER_DEV
+      schema: DIGITAL_CONTROL_TOWER_TRNS
+      ps_account_id: ps723824
+    astro:
+      deployment: MINERVA-AGTR-DCT-DEV
+  qa:
+    snowflake:
+      database: CASC_DIGITAL_CONTROL_TOWER_QAS
+      schema: DIGITAL_CONTROL_TOWER_TRNS
+      ps_account_id: ps723824
+    astro:
+      deployment: MINERVA-AGTR-DCT-DEV
+  prd:
+    snowflake:
+      database: CASC_DIGITAL_CONTROL_TOWER_PRD
+      schema: DIGITAL_CONTROL_TOWER_TRNS
+      ps_account_id: ps723824
+    astro:
+      deployment: MINERVA-AGTR-DCT-PRD
+linting_process:
+  enforce: False
+transformation:
+  type: dbt
+  projectCode: "dbt_project_code"
+  tags:
+    OwningEnterpriseFunction: AGTR
+    OwningSubgroup: OT
+  modules:
+    full:
+      dependency_type: "upstream"
+      dependents:
+        - dag_id: "dbt__dag__agtr_dct_trns_dp_agtr_dct_trns_full_dbt_project_code_full_rearch__none"
+      select:
+        - "+vw_customer_final"
+        - "+vw_item_final"
+        - "+vw_lane_final"
+        - "+vw_itemlanetransmode_final"
+        - "+vw_location_final"
+        - "+vw_transmode_final"
+        - "+vw_supplier_final"
+        - "+vw_location_bp_final"
+        - "+vw_currency_conversion_final"
+        - "+vw_uom_conversion_final"
+        - "+vw_distribution_cost_final"
+        - "+vw_loading_capacity_final"
+        - "+vw_location_storage_capacity_final"
+        - "+vw_transportation_contract_details_final"
+        - "+vw_unloading_capacity_final"
+        - "+vw_actual_snoe_final"
+        - "+vw_actual_vessel_load_final"
+        - "+vw_distribution_snoe_final"
+        - "+vw_port_down_time_final"
+        - "+vw_port_penalty_final"
+        - "+vw_port_swap_final"
+        - "+vw_port_window_final"
+        - "+vw_psi_ibp_final"
+        - "+vw_sales_order_delivery_final"
+        - "+vw_vessel_contract_final"
+        - "+vw_vessel_details_final"
+        - "+vw_vessel_load_baseline_final"
+        - "+vw_vessel_load_final"
+        - "+vw_actual_psi_ibp_final"
+        - "+vw_distribution_ibp_final"
+        - "+vw_distribution_operational_final"
+        - "+vw_onhands_final"
+        - "+vw_onhands_quality_final"
+        - "+vw_shipment_details_final"
+        - "+vw_shipment_status_quality_details_final"
+        - "+vw_shipment_penalties_final"
+        - "+vw_sourcing_contract_details_final"
+        - "+vw_transportation_schedule_final"
+        - "+vw_resource_capacity_final"
+      models:
+        # Master data
+        - name: vw_customer_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/Customer.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - customerid
+              - taxid
+              - name
+              - status
+              - address
+              - complement
+              - neighborhood
+              - zipcode
+              - city
+              - state
+              - country
+              - market
+              - territory
+              - segmentation
+              - customergroup
+              - customergroupdescription
+              - creditblocked
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_item_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/Item.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - item
+              - itemname
+              - itemstatus
+              - itemclass
+              - itemstage
+              - item_type
+              - l1
+              - l2
+              - l3
+              - baseuom
+              - baseuomdescription
+              - resource
+              - containersize
+              - packagesize
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_lane_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/Lane.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - laneid
+              - location_from
+              - location_to
+              - transmode
+              - lane_description
+              - location_from_unit_structure
+              - location_to_unit_structure
+              - islane_optimizable
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_itemlanetransmode_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/ItemLaneTransmode.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - bodlaneid
+              - transmode
+              - itemid
+              - leadtime
+              - lotsizemin
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_location_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/Location.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - locationid
+              - location_unit_structure
+              - location_group
+              - location_country
+              - location_region
+              - location_sub_region
+              - location_name
+              - location_code
+              - zip
+              - address
+              - city
+              - longitude
+              - latitude
+              - state
+              - location_ownership
+              - operator
+              - location_ibp_asset
+              - isactive
+              - restriction
+              - routingcomments
+              - location_type
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_transmode_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/Transmode.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - transmode
+              - transmodedescription
+              - transmodetype
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_supplier_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/Supplier.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - supplierid
+              - taxid
+              - name
+              - status
+              - address
+              - complement
+              - neighborhood
+              - zipcode
+              - city
+              - state
+              - country
+              - market
+              - territory
+              - segmentation
+              - suppliergroup
+              - suppliergroupdescription
+              - creditblocked
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_location_bp_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/LocationBP.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - bp_number
+              - bp_name
+              - origin_subregion
+              - origin_unit_name
+              - origin_unit_id
+              - destination_unit_name
+              - destination_unit_id
+              - destination_ibge_id
+              - address_book
+              - location_code
+              - location_type
+              - status
+              - origin_filial_expense
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+
+        # Parameters
+        - name: vw_currency_conversion_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/CurrencyConversion.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - currencyfrom
+              - currencyto
+              - conversionfactor
+              - conversionstart
+              - conversionend
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_uom_conversion_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/UOMConversion.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - item
+              - uomfrom
+              - uomto
+              - supplyplanningfinalconversionfactor
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_distribution_cost_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/DistributionCost.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - item
+              - transmode
+              - bodlane
+              - month
+              - disttransportationcostperunit
+              - currency
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+
+        # Capacity
+        - name: vw_loading_capacity_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/LoadingCapacity.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - itemid
+              - startdate
+              - enddate
+              - transmodetype
+              - distloadingcapacity
+              - uom
+              - location
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_location_storage_capacity_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/LocationStorageCapacity.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - itemid
+              - mincapacity
+              - maxcapacity
+              - uom
+              - locationid
+              - month
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_transportation_contract_details_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/TransportationContractDetails.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - transportationcontractid
+              - transportationcontractlineid
+              - mintolerance
+              - source
+              - destination
+              - itemid
+              - penaltyfee
+              - transmode
+              - startdate
+              - enddate
+              - quantity
+              - toprate
+              - uom
+              - comments
+              - paidpenalty
+              - currency
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_unloading_capacity_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/UnloadingCapacity.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - transmodetype
+              - itemid
+              - location
+              - startdate
+              - enddate
+              - distunloadingcapacity
+              - uom
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+
+        # Demand
+        - name: vw_actual_snoe_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/Actual_SnOE.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - itemid
+              - sourceid
+              - transmode
+              - finaldestinationid
+              - day
+              - plannedquantity
+              - uom
+              - operator
+              - operationtype
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_actual_vessel_load_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/ActualVesselLoad.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - vesselid
+              - date
+              - itemid
+              - loadedquantity
+              - uom
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_distribution_snoe_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/Distribution_SnOE.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - referencedate
+              - itemid
+              - sourceid
+              - transmode
+              - finaldestinationid
+              - day
+              - plannedquantity
+              - uom
+              - operator
+              - operationtype
+              - isbaseline
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_port_down_time_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/PortDowntime.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - location
+              - startdate
+              - duration
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_port_penalty_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/PortPenalty.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - vesselid
+              - date
+              - itemid
+              - type
+              - estimatedvalue
+              - actualvalue
+              - currency
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_port_swap_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/PortSwap.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - quantity
+              - creditor
+              - debitor
+              - location
+              - itemid
+              - date
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_port_window_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/PortWindow.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - portwindowid
+              - location
+              - startcak
+              - endcak
+              - startrolling
+              - endrolling
+              - portwindowstatus
+              - quantity
+              - uom
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_psi_ibp_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/PSI_IBP.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - item
+              - resourceid
+              - location
+              - customerid
+              - month
+              - valuetype
+              - valueinput
+              - uom
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_sales_order_delivery_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/SalesOrderDelivery.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - demandid
+              - item
+              - location
+              - customerid
+              - shipto
+              - referenceport
+              - lastchangeddateofsalesorder
+              - deliveredsalesorderquantity
+              - committedsalesorderquantity
+              - creationdateofsalesorderdocument
+              - salesordercommitdate
+              - uom
+              - lta
+              - blockedquantity
+              - freighttype
+              - sourcebp
+              - availablequantity
+              - blockingtype
+              - status
+              - transmode
+              - operationtype
+              - cmm_shipto_address
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_vessel_contract_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/VesselContract.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - location
+              - month
+              - value
+              - item
+              - uom
+              - type
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_vessel_details_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/VesselDetails.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - id
+              - name
+              - estimatedtimearrival
+              - estimatedtimeberthing
+              - estimatedtimecompletion
+              - laycanmin
+              - laycanmax
+              - charter
+              - location
+              - demurragerate
+              - despatchrate
+              - buyer
+              - destination
+              - itemid
+              - plannedquantity
+              - uom
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_vessel_load_baseline_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/VesselLoadBaseLine.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - referencedate
+              - vesselid
+              - date
+              - itemid
+              - loadedquantity
+              - uom
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_vessel_load_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/VesselLoad.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - vesselid
+              - date
+              - itemid
+              - loadedquantity
+              - uom
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+
+        # Transactional
+        - name: vw_actual_psi_ibp_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/Actual_PSI_IBP.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - item
+              - resourceid
+              - location
+              - customerid
+              - day
+              - valuetype
+              - valueinput
+              - uom
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_distribution_ibp_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/Distribution_IBP.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - itemid
+              - sourceid
+              - finaldestinationid
+              - month
+              - operation
+              - type
+              - transmode
+              - plannedquantity
+              - uom
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_distribution_operational_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/Distribution_Operational.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - itemid
+              - sourceid
+              - transmode
+              - finaldestinationid
+              - day
+              - plannedquantity
+              - uom
+              - operator
+              - operationtype
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_onhands_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/OnHands.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - item
+              - location
+              - day
+              - blockedquantity
+              - onhandquantity
+              - quarantinequantity
+              - uom
+              - company
+              - cutoffquantity
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_onhands_quality_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/OnHandsQuality.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - location
+              - item
+              - day
+              - measure
+              - value
+              - unit
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_shipment_details_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/ShipmentDetails.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - id
+              - operationtype
+              - source
+              - sourcebp
+              - destination
+              - loadnumber
+              - laneid
+              - sourcingcontractid
+              - transmode
+              - carrier
+              - vehicleid
+              - estimatedshipdate
+              - actualshipdate
+              - scheduleddate
+              - arrivaldate
+              - estimateddeliverydate
+              - actualdeliverydate
+              - loadapplicationdate
+              - salesorderdeliveryid
+              - finaldestination
+              - pricetype
+              - pallet
+              - palletquantity
+              - profile
+              - itemid
+              - plannedcost
+              - actualcost
+              - penaltycost
+              - quantity
+              - uom
+              - currency
+              - quality_adjustment
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_shipment_status_quality_details_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/ShipmentStatusQualityDetails.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - shipmentid
+              - status
+              - statusreferencedate
+              - quantity
+              - statusqualityreferencedate
+              - measure
+              - value
+              - unit
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_shipment_penalties_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/ShipmentPenalties.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - id
+              - shipmentid
+              - driver
+              - penaltycost
+              - currency
+              - referencedate
+              - type_of_cost
+              - reason
+              - sub_reason
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_sourcing_contract_details_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/SourcingContractDetails.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - id
+              - contractnumber
+              - supplierid
+              - source
+              - destination
+              - delivery
+              - deliveryunitid
+              - origination
+              - transmode
+              - freighttype
+              - deliverystart
+              - deliveryend
+              - status
+              - salesrep
+              - fiscalcondition
+              - type
+              - paymentdate
+              - paymentdetails
+              - farm
+              - globalinvoice
+              - harvest
+              - itemid
+              - freightcost
+              - actualcost
+              - freightcadence
+              - plannedcost
+              - currency
+              - quantity
+              - receivedquantity
+              - receivedpaf
+              - toreceivetotal
+              - toreceiveflat
+              - toreceivepaf
+              - cancelledquantity
+              - uom
+              - price
+              - priority
+              - purchasedate
+              - isslipwithchangeddestination
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_transportation_schedule_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/TransportationSchedule.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - date
+              - item
+              - source
+              - destination
+              - sourcingcontract
+              - carrier
+              - type
+              - transportationnumber
+              - volume
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+        - name: vw_resource_capacity_final
+          unload:
+            stage_dev: "@CASC_DIGITAL_CONTROL_TOWER_QAS.DIGITAL_CONTROL_TOWER_TRNS.STG_MINE\
+              RVA_DEV_DIGITAL_CONTROL_TOWER_OUT"
+            stage_prod: "@CASC_DIGITAL_CONTROL_TOWER_PRD.DIGITAL_CONTROL_TOWER_TRNS.STG_MIN\
+              ERVA_PRD_DIGITAL_CONTROL_TOWER_OUT"
+            stage_path: "/out_incremental/ResourceCapacity.csv"
+            format: "CSV"
+            header: false
+            single: true
+            overwrite: true
+            # mode: incremental
+            # check_column: cdp_timestamp_inc
+            mode: full
+            check_column: cdp_timestamp_full
+            max_file_size: '5368709120'
+            initial_load: true
+            columns:
+              - location
+              - resource
+              - day
+              - classification
+              - value
+              - uom
+              - type
+              - comments
+              - cdp_timestamp_o9
+            format_configs:
+              record_delimiter: "\\r\\n"
+              field_delimiter: "|"
+              compression: "NONE"
+              binary_format: "UTF8"
+      scheduler:
+        type: airflow
+        platform: astro
+        schedule: '5 3 * * WED,SUN' #repush schedule changes
+        sync: zip_file # docker, git or zip_file
+        email: -MINERVA-OPS-ALL@Cargill.com # future feature with alertOnFailure
+        max_consecutive_failed_dag_runs: 1
+        retries: 2
+        retry_delay_in_minutes: 2
+      alerts:
+        - type: teams
+          success_channel: "https://cargillonline.webhook.office.com/webhookb2/7764a6f0-d\
+            2cf-4294-aa04-a7d5fe5af8bb@57368c21-b8cf-42cf-bd0b-43ecd4bc62ae/Inc\
+            omingWebhook/469accdedc75488682af4c72886c87e5/0b7c2a34-f407-4a1c-b8\
+            25-7d31d7692af7/V2lFKKzNvcw2_6AzjCf3lIyn43DMvYkUGnuXsfbE-XfCI1"
+          failure_channel: "https://cargillonline.webhook.office.com/webhookb2/7764a6f0-d\
+            2cf-4294-aa04-a7d5fe5af8bb@57368c21-b8cf-42cf-bd0b-43ecd4bc62ae/Inc\
+            omingWebhook/0b797d83b78c4a67aac54a9a38cd626e/0b7c2a34-f407-4a1c-b8\
+            25-7d31d7692af7/V2Du2Wx2ik_AkYY8lJDoX33ELDcEDOa8DuwPQyqPdppfg1"
+    full_rearch:
+      select:
+        - "intstg_createtrfcontracts"
+        - "intstg_portpenalty"
+        - "intstg_shipment_details_without_cancelled_shipments"
+        - "intstg_shipment_details"
+        - "intstg_shipment_details_changed"
+        - "intstg_shipment_latest_status"
+        - "intstg_shipment_status_quality_details"
+        - "intstg_shipment_status_tracking_pace"
+        - "intstg_sourcing_contract_details"
+        - "intstg_transportationcontractdetails"
+        - "intstg_vesseldetails"
+        - "intstg_destinationsnoe"
+        - "intstg_originsnoe"
+        - "out_dimcontractactualsflag_stg"
+        - "out_dimshipmentlineidactualsflag_stg"
+        - "trf_contracts_control"
+        - "out_carriermaster"
+        - "out_contractmaster"
+        - "out_customermaster"
+        - "out_dailyscheduling_scheduled"
+        - "out_dimcontractactualsflag"
+        - "out_dimshipmentlineidactualsflag"
+        - "out_salesorderdelivery"
+        - "out_shipmentdetails"
+        - "out_shipmentsexecutivebysource"
+        - "out_shipmentstatustracking_pace"
+        - "out_sourcingcontractdetails"
+        - "out_carriermaster_final"
+        - "out_contractmaster_final"
+        - "out_dailyscheduling_scheduled_final"
+        - "out_dimcontractactualsflag_final"
+        - "out_dimshipmentlineidactualsflag_final"
+        - "out_salesorderdelivery_final"
+        - "out_shipmentdetails_final"
+        - "out_shipmentsexecutivebysource_final"
+        - "out_shipmentstatustracking_pace_final"
+        - "out_sourcingcontractdetails_final"
+        - "tab_bapi_log"
+        - "out_trfcontractmaster"
+        - "out_trfcontractmaster_final"
+        - "out_sourcemaster"
+        - "out_sourcemaster_final"
+        - "out_itemmaster"
+        - "out_itemmaster_final"
+        - "out_locationmaster"
+        - "out_locationmaster_final"
+        - "out_vehiclemaster"
+        - "out_vehiclemaster_final"
+        - "out_lanemaster"
+        - "out_lanemaster_final"
+        - "out_customermaster"
+        - "out_customermaster_final"
+        - "out_suppliermaster"
+        - "out_suppliermaster_final"
+        - "out_transmodemaster"
+        - "out_transmodemaster_final"
+        - "out_uommaster"
+        - "out_uommaster_final"
+        - "out_locationbpmaster"
+        - "out_locationbpmaster_final"
+        - "out_operationtypemaster"
+        - "out_operationtypemaster_final"
+        - "out_spbpassociation"
+        - "out_spbpassociation_final"
+        - "out_warehousesalesorders"
+        - "out_warehousesalesorders_final"
+        - "out_qualitymaster"
+        - "out_qualitymaster_final"
+        - "out_creditormaster"
+        - "out_creditormaster_final"
+        - "out_debitormaster"
+        - "out_debitormaster_final"
+        - "out_operatormaster"
+        - "out_operatormaster_final"
+        - "out_transshipmentmaster"
+        - "out_transshipmentmaster_final"
+        - "out_companymaster"
+        - "out_companymaster_final"
+        - "out_demandtype"
+        - "out_demandtype_final"
+        - "out_subreasonmaster"
+        - "out_subreasonmaster_final"
+        - "out_reasonmaster"
+        - "out_reasonmaster_final"
+        - "out_onhandsplants"
+        - "out_onhandsplants_final"
+        - "out_resourcemaster"
+        - "out_resourcemaster_final"
+      models:
+        - name: out_shipmentstatustracking_pace_final
+        - name: out_sourcingcontractdetails_final
+        - name: out_salesorderdelivery_final
+        - name: out_shipmentdetails_final
+        - name: out_shipmentsexecutivebysource_final
+        - name: out_dailyscheduling_scheduled_final
+        - name: out_dimcontractactualsflag_final
+        - name: out_dimshipmentlineidactualsflag_final
+        - name: out_contractmaster_final
+        - name: out_carriermaster_final
+        - name: out_trfcontractmaster_final
+        - name: out_sourcemaster_final
+        - name: out_itemmaster_final
+        - name: out_locationmaster_final
+        - name: out_vehiclemaster_final
+        - name: out_lanemaster_final
+        - name: out_customermaster_final
+        - name: out_suppliermaster_final
+        - name: out_transmodemaster_final
+        - name: out_uommaster_final
+        - name: out_locationbpmaster_final
+        - name: out_operationtypemaster_final
+        - name: out_spbpassociation_final
+        - name: out_warehousesalesorders_final
+        - name: out_qualitymaster_final
+        - name: out_creditormaster_final
+        - name: out_debitormaster_final
+        - name: out_operatormaster_final
+        - name: out_transshipmentmaster_final
+        - name: out_companymaster_final
+        - name: out_demandtype_final
+        - name: out_subreasonmaster_final
+        - name: out_reasonmaster_final
+        - name: out_onhandsplants_final
+        - name: out_resourcemaster_final
+      scheduler:
+        type: airflow
+        platform: astro
+        schedule:  "" # no schedule, so dag only be triggered by main dag (full)
+        sync: zip_file # docker, git or zip_file
+        email: -MINERVA-OPS-ALL@Cargill.com # future feature with alertOnFailure a
+        max_consecutive_failed_dag_runs: 1
+        retries: 2
+        retry_delay_in_minutes: 2
+      alerts:
+        - type: teams
+          success_channel: "https://cargillonline.webhook.office.com/webhookb2/7764a6f0-d\
+            2cf-4294-aa04-a7d5fe5af8bb@57368c21-b8cf-42cf-bd0b-43ecd4bc62ae/Inc\
+            omingWebhook/469accdedc75488682af4c72886c87e5/0b7c2a34-f407-4a1c-b8\
+            25-7d31d7692af7/V2lFKKzNvcw2_6AzjCf3lIyn43DMvYkUGnuXsfbE-XfCI1"
+          failure_channel: "https://cargillonline.webhook.office.com/webhookb2/7764a6f0-d\
+            2cf-4294-aa04-a7d5fe5af8bb@57368c21-b8cf-42cf-bd0b-43ecd4bc62ae/Inc\
+            omingWebhook/0b797d83b78c4a67aac54a9a38cd626e/0b7c2a34-f407-4a1c-b8\
+            25-7d31d7692af7/V2Du2Wx2ik_AkYY8lJDoX33ELDcEDOa8DuwPQyqPdppfg1"

@@ -1,0 +1,540 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH
+CTE_UDC_MAPPING AS (
+    SELECT
+        CATEGORY,
+        STAGE,
+        SOURCE_CODE,
+        TARGET_CODE,
+        TARGET_NUMBER
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }}
+    WHERE
+        1 = 1
+        AND STATUS = 'ATIVO'
+),
+
+PSI_IBP_ANALISEPLANTAS_RAW AS (
+    -- VALUETYPE = DEMANDINPUT
+    -- Aba = Analise Solidos e Analise Liquidos
+    -- Tipo = EMBARQUE MI OU (TIPO = 'EMBARQUE CX' AND Destino = 'MI')
+    SELECT
+        IT.TARGET_CODE AS ITEM,
+        NULL AS RESOURCEID,
+        COALESCE(LOC.TARGET_CODE, DEMMI.FABRICA) AS LOCATIONID,
+        COALESCE(LOC.TARGET_CODE, DEMMI.FABRICA) AS CUSTOMERID,
+        DEMMI.MONTH,
+        'DEMANDINPUT' AS VALUETYPE,
+        CASE
+            WHEN
+                UPPER(DEMMI.PRODUTO) IN (
+                    SELECT UDC.SOURCE_CODE
+                    FROM CTE_UDC_MAPPING AS UDC
+                    WHERE
+                        UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                        AND UDC.STAGE = 'CONVERSAO_PROD_ENVASADO_CXS'
+                )
+                AND UPPER(DEMMI.TIPO) IN (
+                    SELECT UDC.SOURCE_CODE
+                    FROM CTE_UDC_MAPPING AS UDC
+                    WHERE
+                        UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                        AND UDC.STAGE = 'EMBARQUE (CX)'
+                )
+                THEN TO_CHAR(ROUND(TO_NUMBER(
+                    REPLACE(DEMMI.VALUEINPUT, ',', '.')
+                ) * (
+                    SELECT MAX(UDC.TARGET_NUMBER)
+                    FROM CTE_UDC_MAPPING AS UDC
+                    WHERE
+                        UDC.CATEGORY = 'PSI_IBP_CONVERSAO'
+                        AND UDC.STAGE = 'ENVASADO_CXS'
+                ), 3))
+            --VALOR EM CAIXAS,MULTIPLICAR POR 0,01656 PARA RETORNAR TN
+            ELSE REPLACE(DEMMI.VALUEINPUT, ',', '.')
+        END AS VALUEINPUT
+    FROM
+        {{ source('pscfl', 'F_MIN_PSI_IBP_ANALISEPLANTAS_SOLIDOSLIQUIDOS') }}
+            AS DEMMI
+    LEFT JOIN CTE_UDC_MAPPING AS IT
+        ON
+            UPPER(DEMMI.PRODUTO) = IT.SOURCE_CODE
+            AND IT.CATEGORY = 'PSI_IBP_ITEM'
+            AND IT.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    LEFT JOIN CTE_UDC_MAPPING AS LOC
+        ON
+            UPPER(DEMMI.FABRICA) = LOC.SOURCE_CODE
+            AND LOC.CATEGORY = 'PSI_IBP_LOCATION'
+            AND LOC.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    WHERE
+        UPPER(DEMMI.TABLE_NAME) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TABLE_NAME_DEMANDINPUT_MI'
+        )
+        AND (
+            UPPER(DEMMI.TIPO) IN (
+                SELECT UDC.SOURCE_CODE
+                FROM CTE_UDC_MAPPING AS UDC
+                WHERE
+                    UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                    AND UDC.STAGE = 'TIPO_DEMANDINPUT_MI'
+            )
+            OR (
+                UPPER(DEMMI.TIPO) IN (
+                    SELECT UDC.SOURCE_CODE
+                    FROM CTE_UDC_MAPPING AS UDC
+                    WHERE
+                        UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                        AND UDC.STAGE = 'TIPO2_DEMANDINPUT_MI'
+                )
+                AND UPPER(DEMMI.DESTINO) IN (
+                    SELECT UDC.SOURCE_CODE
+                    FROM CTE_UDC_MAPPING AS UDC
+                    WHERE
+                        UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                        AND UDC.STAGE = 'DESTINO_DEMANDINPUT_MI'
+                )
+            )
+        )
+
+    UNION ALL
+
+    -- Aba = Analise Solidos e Analise Liquidos
+    -- Tipo = EMBARQUE ME
+    -- Porto x Porto
+    SELECT
+        IT.TARGET_CODE AS ITEM,
+        NULL AS RESOURCEID,
+        COALESCE(LOC.TARGET_CODE, DEMME.DESTINO) AS LOCATIONID,
+        COALESCE(CUST.TARGET_CODE, DEMME.DESTINO) AS CUSTOMERID,
+        DEMME.MONTH,
+        'DEMANDINPUT' AS VALUETYPE,
+        DEMME.VALUEINPUT
+    FROM {{ source('pscfl', 'F_MIN_PSI_IBP_ANALISEPLANTAS_SOLIDOSLIQUIDOS') }} AS DEMME -- noqa
+    LEFT JOIN CTE_UDC_MAPPING AS IT
+        ON
+            UPPER(DEMME.PRODUTO) = IT.SOURCE_CODE
+            AND IT.CATEGORY = 'PSI_IBP_ITEM'
+            AND IT.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    LEFT JOIN CTE_UDC_MAPPING AS LOC
+        ON
+            UPPER(DEMME.DESTINO) = LOC.SOURCE_CODE
+            AND LOC.CATEGORY = 'PSI_IBP_LOCATION'
+            AND LOC.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    LEFT JOIN CTE_UDC_MAPPING AS CUST
+        ON
+            UPPER(DEMME.DESTINO) = CUST.SOURCE_CODE
+            AND CUST.CATEGORY = 'PSI_IBP_LOCATION'
+            AND CUST.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    WHERE
+        UPPER(DEMME.TABLE_NAME) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TABLE_NAME_DEMANDINPUT_ME'
+        )
+        AND UPPER(DEMME.TIPO) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TIPO_DEMANDINPUT_ME'
+        )
+
+    UNION ALL
+
+    -- Aba = Analise Solidos e Analise Liquidos
+    -- Tipo = EMBARQUE ME
+    -- Planta x Porto
+    SELECT
+        IT.TARGET_CODE AS ITEM,
+        NULL AS RESOURCEID,
+        COALESCE(LOC.TARGET_CODE, DEMME.FABRICA) AS LOCATIONID,
+        COALESCE(CUST.TARGET_CODE, DEMME.DESTINO) AS CUSTOMERID,
+        DEMME.MONTH,
+        'DEMANDINPUT' AS VALUETYPE,
+        DEMME.VALUEINPUT
+    FROM {{ source('pscfl', 'F_MIN_PSI_IBP_ANALISEPLANTAS_SOLIDOSLIQUIDOS') }} AS DEMME -- noqa
+    LEFT JOIN CTE_UDC_MAPPING AS IT
+        ON
+            UPPER(DEMME.PRODUTO) = IT.SOURCE_CODE
+            AND IT.CATEGORY = 'PSI_IBP_ITEM'
+            AND IT.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    LEFT JOIN CTE_UDC_MAPPING AS LOC
+        ON
+            UPPER(DEMME.FABRICA) = LOC.SOURCE_CODE
+            AND LOC.CATEGORY = 'PSI_IBP_LOCATION'
+            AND LOC.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    LEFT JOIN CTE_UDC_MAPPING AS CUST
+        ON
+            UPPER(DEMME.DESTINO) = CUST.SOURCE_CODE
+            AND CUST.CATEGORY = 'PSI_IBP_LOCATION'
+            AND CUST.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    WHERE
+        UPPER(DEMME.TABLE_NAME) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TABLE_NAME_DEMANDINPUT_ME'
+        )
+        AND UPPER(DEMME.TIPO) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TIPO_DEMANDINPUT_ME'
+        )
+
+    UNION ALL
+
+    -- VALUETYPE = RECEIVEDINPUT
+    -- Aba = Analise Solidos e Analise Liquidos
+    -- Tipo = EMBARQUE TRF e RECEBIMENTO MINGA e RECEBIMENTO TERCEIROS
+    SELECT
+        IT.TARGET_CODE AS ITEM,
+        NULL AS RESOURCEID,
+        CASE
+            WHEN
+                REC.TIPO IN (
+                    SELECT UDC.SOURCE_CODE
+                    FROM CTE_UDC_MAPPING AS UDC
+                    WHERE
+                        UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                        AND UDC.STAGE = 'LOCATION_FABRICA'
+                )
+                THEN COALESCE(LOC1.TARGET_CODE, REC.FABRICA)
+            WHEN
+                REC.TIPO IN (
+                    SELECT UDC.SOURCE_CODE
+                    FROM CTE_UDC_MAPPING AS UDC
+                    WHERE
+                        UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                        AND UDC.STAGE = 'LOCATION_DESTINO'
+                )
+                THEN COALESCE(LOC2.TARGET_CODE, REC.DESTINO)
+        END AS LOCATIONID,
+        NULL AS CUSTOMERID,
+        REC.MONTH,
+        'RECEIVEDINPUT' AS VALUETYPE,
+        REC.VALUEINPUT
+    FROM
+        {{ source('pscfl', 'F_MIN_PSI_IBP_ANALISEPLANTAS_SOLIDOSLIQUIDOS') }}
+            AS REC
+    LEFT JOIN CTE_UDC_MAPPING AS IT
+        ON
+            UPPER(REC.PRODUTO) = IT.SOURCE_CODE
+            AND IT.CATEGORY = 'PSI_IBP_ITEM'
+            AND IT.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    LEFT JOIN CTE_UDC_MAPPING AS LOC1
+        ON
+            UPPER(REC.FABRICA) = LOC1.SOURCE_CODE
+            AND LOC1.CATEGORY = 'PSI_IBP_LOCATION'
+            AND LOC1.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    LEFT JOIN CTE_UDC_MAPPING AS LOC2
+        ON
+            UPPER(REC.DESTINO) = LOC2.SOURCE_CODE
+            AND LOC2.CATEGORY = 'PSI_IBP_LOCATION'
+            AND LOC2.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    WHERE
+        UPPER(REC.TABLE_NAME) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TABLE_NAME_RECEIVEDINPUT'
+        )
+        AND UPPER(REC.TIPO) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TIPO_RECEIVEDINPUT'
+        )
+
+    UNION ALL
+
+    -- VALUETYPE = EOHINPUT
+    -- Aba = Analise Solidos e Analise Liquidos
+    -- Tipo = ESTOQUE
+    SELECT
+        IT.TARGET_CODE AS ITEM,
+        NULL AS RESOURCEID,
+        COALESCE(LOC.TARGET_CODE, EOH.FABRICA) AS LOCATIONID,
+        NULL AS CUSTOMERID,
+        EOH.MONTH,
+        'EOHINPUT' AS VALUETYPE,
+        EOH.VALUEINPUT
+    FROM
+        {{ source('pscfl', 'F_MIN_PSI_IBP_ANALISEPLANTAS_SOLIDOSLIQUIDOS') }}
+            AS EOH
+    LEFT JOIN CTE_UDC_MAPPING AS IT
+        ON
+            UPPER(EOH.PRODUTO) = IT.SOURCE_CODE
+            AND IT.CATEGORY = 'PSI_IBP_ITEM'
+            AND IT.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    LEFT JOIN CTE_UDC_MAPPING AS LOC
+        ON
+            UPPER(EOH.FABRICA) = LOC.SOURCE_CODE
+            AND LOC.CATEGORY = 'PSI_IBP_LOCATION'
+            AND LOC.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    WHERE
+        UPPER(EOH.TABLE_NAME) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TABLE_NAME_EOHINPUT'
+        )
+        AND UPPER(EOH.TIPO) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TIPO_ESTOQUE'
+        )
+
+    UNION ALL
+
+    -- VALUETYPE = PRODUCTIONINPUT
+    SELECT DISTINCT
+        IT.TARGET_CODE AS ITEM,
+        RES.TARGET_CODE AS RESOURCEID,
+        COALESCE(LOC.TARGET_CODE, INP.LOCATION) AS LOCATIONID,
+        NULL AS CUSTOMERID,
+        INP.MONTH,
+        'PRODUCTIONINPUT' AS VALUETYPE,
+        INP.VALUEINPUT
+    FROM
+        {{ source('pscfl', 'F_MIN_PSI_IBP_ANALISEPLANTAS_ANALISEPROJECAO') }}
+            AS INP
+    LEFT JOIN CTE_UDC_MAPPING AS IT
+        ON
+            UPPER(INP.TABLE_NAME) = IT.SOURCE_CODE
+            AND IT.CATEGORY = 'PSI_IBP_ITEM'
+            AND IT.STAGE = 'PRODUCTIONINPUT'
+    LEFT JOIN CTE_UDC_MAPPING AS RES
+        ON
+            UPPER(INP.TABLE_NAME) = RES.SOURCE_CODE
+            AND RES.CATEGORY = 'PSI_IBP_RESOURCE'
+            AND RES.STAGE = 'PRODUCTIONINPUT'
+    LEFT JOIN CTE_UDC_MAPPING AS LOC
+        ON
+            UPPER(INP.LOCATION) = LOC.SOURCE_CODE
+            AND LOC.CATEGORY = 'PSI_IBP_LOCATION'
+            AND LOC.STAGE = 'PRODUCTIONINPUT'
+    WHERE
+        UPPER(INP.SHEET) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'SHEET_PRODUCTIONOUTPUT'
+        )
+        AND UPPER(INP.TABLE_NAME) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TABLE_NAME_PRODUCTIONINPUT'
+        )
+
+    UNION ALL
+
+    -- VALUETYPE = PRODUCTIONOUTPUT
+    SELECT DISTINCT
+        IT.TARGET_CODE AS ITEM,
+        RES.TARGET_CODE AS RESOURCEID,
+        COALESCE(LOC.TARGET_CODE, OUTE.LOCATION) AS LOCATIONID,
+        NULL AS CUSTOMERID,
+        OUTE.MONTH,
+        'PRODUCTIONOUTPUT' AS VALUETYPE,
+        CASE
+            WHEN
+                UPPER(OUTE.TABLE_NAME) IN (
+                    SELECT UDC.SOURCE_CODE
+                    FROM CTE_UDC_MAPPING AS UDC
+                    WHERE
+                        UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                        AND UDC.STAGE = 'CONVERSAO_TABNAME_ENVASADO_CXS'
+                )
+                THEN TO_CHAR(ROUND(TO_NUMBER(
+                    REPLACE(OUTE.VALUEINPUT, ',', '.')
+                ) * (
+                    SELECT MAX(UDC.TARGET_NUMBER)
+                    FROM CTE_UDC_MAPPING AS UDC
+                    WHERE
+                        UDC.CATEGORY = 'PSI_IBP_CONVERSAO'
+                        AND UDC.STAGE = 'BOTTLING BXS/MONTH'
+                ), 3))
+            --VALOR EM CAIXAS,MULTIPLICAR POR 0,01656 PARA RETORNAR TN
+            ELSE REPLACE(OUTE.VALUEINPUT, ',', '.')
+        END AS VALUEINPUT
+    FROM
+        {{ source('pscfl', 'F_MIN_PSI_IBP_ANALISEPLANTAS_ANALISEPROJECAO') }}
+            AS OUTE
+    LEFT JOIN CTE_UDC_MAPPING AS IT
+        ON
+            UPPER(OUTE.TABLE_NAME) = IT.SOURCE_CODE
+            AND IT.CATEGORY = 'PSI_IBP_ITEM'
+            AND IT.STAGE = 'PRODUCTIONOUTPUT'
+    LEFT JOIN CTE_UDC_MAPPING AS RES
+        ON
+            UPPER(OUTE.TABLE_NAME) = RES.SOURCE_CODE
+            AND RES.CATEGORY = 'PSI_IBP_RESOURCE'
+            AND RES.STAGE = 'PRODUCTIONOUTPUT'
+    LEFT JOIN CTE_UDC_MAPPING AS LOC
+        ON
+            UPPER(OUTE.LOCATION) = LOC.SOURCE_CODE
+            AND LOC.CATEGORY = 'PSI_IBP_LOCATION'
+            AND LOC.STAGE = 'PRODUCTIONOUTPUT'
+    WHERE
+        UPPER(OUTE.SHEET) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'SHEET_PRODUCTIONOUTPUT'
+        )
+        AND UPPER(OUTE.TABLE_NAME) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TABLE_NAME_PRODUCTIONOUTPUT'
+        )
+
+    UNION ALL
+
+    -- VALUETYPE = AVAILABLECAPACITY
+    SELECT DISTINCT
+        IT.TARGET_CODE AS ITEM,
+        RES.TARGET_CODE AS RESOURCEID,
+        COALESCE(LOC.TARGET_CODE, CAP.LOCATION) AS LOCATIONID,
+        NULL AS CUSTOMERID,
+        CAP.MONTH,
+        'AVAILABLECAPACITY' AS VALUETYPE,
+        CAP.VALUEINPUT
+    FROM
+        {{ source('pscfl', 'F_MIN_PSI_IBP_ANALISEPLANTAS_CAPACIDADE') }} AS CAP
+    LEFT JOIN CTE_UDC_MAPPING AS IT
+        ON
+            UPPER(CAP.TABLE_NAME) = IT.SOURCE_CODE
+            AND IT.CATEGORY = 'PSI_IBP_ITEM'
+            AND IT.STAGE = 'AVAILABLECAPACITY'
+    LEFT JOIN CTE_UDC_MAPPING AS RES
+        ON
+            UPPER(CAP.TABLE_NAME) = RES.SOURCE_CODE
+            AND RES.CATEGORY = 'PSI_IBP_RESOURCE'
+            AND RES.STAGE = 'AVAILABLECAPACITY'
+    LEFT JOIN CTE_UDC_MAPPING AS LOC
+        ON
+            UPPER(CAP.LOCATION) = LOC.SOURCE_CODE
+            AND LOC.CATEGORY = 'PSI_IBP_LOCATION'
+            AND LOC.STAGE = 'AVAILABLECAPACITY'
+    WHERE
+        UPPER(CAP.TABLE_NAME) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TABLE_NAME_CAPACIDADE'
+        )
+        AND UPPER(CAP.METRIC) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'METRIC_CAPACIDADE'
+        )
+
+    UNION ALL
+
+    -- VALUETYPE = SHIPPEDINPUT
+    -- Aba = Analise Solidos e Analise Liquidos
+    -- Tipo = EMBARQUE TRF
+    SELECT
+        IT.TARGET_CODE AS ITEM,
+        NULL AS RESOURCEID,
+        COALESCE(LOC.TARGET_CODE, SHIPPED.FABRICA) AS LOCATIONID,
+        COALESCE(CUST.TARGET_CODE, SHIPPED.DESTINO) AS CUSTOMERID,
+        SHIPPED.MONTH,
+        'SHIPPEDINPUT' AS VALUETYPE,
+        SHIPPED.VALUEINPUT
+    FROM
+        {{ source('pscfl', 'F_MIN_PSI_IBP_ANALISEPLANTAS_SOLIDOSLIQUIDOS') }}
+            AS SHIPPED
+    LEFT JOIN CTE_UDC_MAPPING AS IT
+        ON
+            UPPER(SHIPPED.PRODUTO) = IT.SOURCE_CODE
+            AND IT.CATEGORY = 'PSI_IBP_ITEM'
+            AND IT.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    LEFT JOIN CTE_UDC_MAPPING AS LOC
+        ON
+            UPPER(SHIPPED.FABRICA) = LOC.SOURCE_CODE
+            AND LOC.CATEGORY = 'PSI_IBP_LOCATION'
+            AND LOC.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    LEFT JOIN CTE_UDC_MAPPING AS CUST
+        ON
+            UPPER(SHIPPED.DESTINO) = CUST.SOURCE_CODE
+            AND CUST.CATEGORY = 'PSI_IBP_LOCATION'
+            AND CUST.STAGE = 'ANALISE_SOLIDOS_LIQUIDOS'
+    WHERE
+        1 = 1
+        AND UPPER(SHIPPED.TABLE_NAME) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TABLE_NAME_SHIPPEDINPUT'
+        )
+        AND UPPER(SHIPPED.TIPO) IN (
+            SELECT UDC.SOURCE_CODE
+            FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'PSI_IBP_FILTROS'
+                AND UDC.STAGE = 'TIPO_SHIPPEDINPUT'
+        )
+),
+
+PSI_IBP_ANALISEPLANTAS_TRANSFORMED AS (
+    SELECT
+        PSI_IBP.ITEM,
+        PSI_IBP.LOCATIONID AS "LOCATION",
+        PSI_IBP.MONTH,
+        PSI_IBP.VALUETYPE,
+        'TN' AS UOM,
+        ROUND(SUM(TO_NUMBER(REPLACE(PSI_IBP.VALUEINPUT, ',', '.'))), 3)
+            AS VALUEINPUT,
+        COALESCE(PSI_IBP.RESOURCEID, 'N/A') AS RESOURCEID,
+        COALESCE(PSI_IBP.CUSTOMERID, 'N/A') AS CUSTOMERID
+    FROM PSI_IBP_ANALISEPLANTAS_RAW AS PSI_IBP
+    WHERE TRY_TO_DATE(PSI_IBP.MONTH, 'MM-YYYY') >= '2025-01-01'::DATE
+    GROUP BY
+        PSI_IBP.MONTH,
+        PSI_IBP.ITEM,
+        PSI_IBP.RESOURCEID,
+        PSI_IBP.LOCATIONID,
+        PSI_IBP.CUSTOMERID,
+        PSI_IBP.VALUETYPE
+)
+
+SELECT
+    ITEM,
+    RESOURCEID,
+    LOCATION,
+    CUSTOMERID,
+    MONTH,
+    VALUETYPE,
+    VALUEINPUT,
+    UOM
+FROM PSI_IBP_ANALISEPLANTAS_TRANSFORMED

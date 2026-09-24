@@ -1,0 +1,44 @@
+-- noqa: disable=all
+{{
+    config(
+        materialized='table'
+    )
+}}
+WITH
+
+MASS_BALANCE AS (
+
+    SELECT -- noqa
+        --CONCAT(F.PRODUCT_CODE,'-', F.BRANCH_PLANT_SOURCE,'-', F.BRANCH_PLANT_DESTINATION) AS CROP_BUSINESS_KEY, -- noqa
+        CONCAT(F.PRODUCT_CODE, '-', F.BRANCH_PLANT_SOURCE) AS CROP_BUSINESS_KEY,
+        F.PRODUCT_CODE,
+        F.BRANCH_PLANT_SOURCE AS TRANSSHIPMENT_LOCATION,
+        F.BRANCH_PLANT_DESTINATION AS PORT_LOCATION,
+        LF.LOCATION_CODE,
+        F.INVOICE_ISSUE_DATE AS INVOICE_ISSUANCE_DATE,
+        SUM(F.INVOICE_VOLUME) AS INVOICE_VOLUME
+    FROM {{ ref('tab_shipment_loads_faturados_jde_stg') }} AS F
+    INNER JOIN {{ ref('tab_location_internal_stg') }} AS L
+        ON F.BRANCH_PLANT_SOURCE = L.LOCATIONID
+    LEFT JOIN {{ ref('tab_location_internal_stg') }} AS LF
+        ON F.BRANCH_PLANT_DESTINATION = LF.LOCATIONID
+    WHERE
+        F.OPERATION_TYPE IN ('TRF')
+        AND F.LOAD_STATUS_CODE <> '98'
+        AND L.LOCATION_UNIT_STRUCTURE IN ('TRANSBORDO', 'PORTO FLUVIAL')
+        AND L.LOCATIONID IN
+        (
+            SELECT DISTINCT SUBSTR(SOURCE_CODE,1,10) AS LOCATIONTRANSBORDO
+            FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }} AS S
+            WHERE
+                S.CATEGORY = 'SHIPMENT'
+                AND S.STAGE = 'CIF FOB TRANSBORDO'
+        )
+    GROUP BY
+        1, 2, 3, 4, 5, 6
+
+)
+
+SELECT *, -- noqa
+    RANK() OVER (PARTITION BY CROP_BUSINESS_KEY ORDER BY INVOICE_ISSUANCE_DATE) AS RK  -- noqa
+FROM MASS_BALANCE

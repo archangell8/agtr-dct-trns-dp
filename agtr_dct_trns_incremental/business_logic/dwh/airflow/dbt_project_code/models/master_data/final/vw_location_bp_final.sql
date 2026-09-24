@@ -1,0 +1,83 @@
+-- noqa: disable=all
+{% set list_tags = ['model_final', 'delta_full', 'delta_execution'] %}
+
+{{
+    config(
+        materialized = 'view',
+        tags = list_tags
+    )
+}}
+
+WITH FINAL AS (
+    SELECT
+        0 AS IDX,
+        'BP_NUMBER' AS BP_NUMBER,
+        'BP_NAME' AS BP_NAME,
+        'ORIGIN_SUBREGION' AS ORIGIN_SUBREGION,
+        'ORIGIN_UNIT_NAME' AS ORIGIN_UNIT_NAME,
+        'ORIGIN_UNIT_ID' AS ORIGIN_UNIT_ID,
+        'DESTINATION_UNIT_NAME' AS DESTINATION_UNIT_NAME,
+        'DESTINATION_UNIT_ID' AS DESTINATION_UNIT_ID,
+        'DESTINATION_IBGE_ID' AS DESTINATION_IBGE_ID,
+        'ADDRESS_BOOK' AS ADDRESS_BOOK,
+        'LOCATION_CODE' AS LOCATION_CODE,
+        'LOCATION_TYPE' AS LOCATION_TYPE,
+        'STATUS' AS STATUS,
+        'ORIGIN_FILIAL_EXPENSE' AS ORIGIN_FILIAL_EXPENSE,
+        NULL AS HASH_ID,
+        NULL AS CDP_TRANSACTION,
+        (SELECT CDP_TIMESTAMP FROM {{ ref('tab_cdp_timestamp_models') }} WHERE MODEL_NAME = UPPER('location_bp')) AS CDP_TIMESTAMP_FULL, -- noqa
+        (SELECT CDP_TIMESTAMP FROM {{ ref('tab_cdp_timestamp_models') }} WHERE MODEL_NAME = UPPER('location_bp')) AS CDP_TIMESTAMP_INC, -- noqa
+        'CDP_TIMESTAMP_O9' AS CDP_TIMESTAMP_O9
+
+    UNION ALL
+
+    SELECT
+        1 AS IDX,
+        BP_NUMBER::STRING,
+        BP_NAME::STRING,
+        ORIGIN_SUBREGION::STRING,
+        ORIGIN_UNIT_NAME::STRING,
+        ORIGIN_UNIT_ID::STRING,
+        DESTINATION_UNIT_NAME::STRING,
+        DESTINATION_UNIT_ID::STRING,
+        DESTINATION_IBGE_ID::STRING,
+        ADDRESS_BOOK::STRING,
+        LOCATION_CODE::STRING,
+        LOCATION_TYPE::STRING,
+        STATUS::STRING,
+        ORIGIN_FILIAL_EXPENSE::STRING,
+        HASH_ID,
+        CDP_TRANSACTION,
+        CDP_TIMESTAMP_FULL,
+        CDP_TIMESTAMP_INC,
+        CDP_TIMESTAMP_O9::STRING
+    FROM {{ ref('location_bp') }}
+    {% if check_model_group_scheduler(list_tags, 'LocationBp') %}
+        WHERE 1 = 1
+    {% else %}
+        WHERE 1 = 0
+    {% endif %}
+)
+
+SELECT
+    BP_NUMBER,
+    BP_NAME,
+    ORIGIN_SUBREGION,
+    ORIGIN_UNIT_NAME,
+    ORIGIN_UNIT_ID,
+    DESTINATION_UNIT_NAME,
+    DESTINATION_UNIT_ID,
+    DESTINATION_IBGE_ID,
+    ADDRESS_BOOK,
+    LOCATION_CODE,
+    LOCATION_TYPE,
+    STATUS,
+    ORIGIN_FILIAL_EXPENSE,
+    HASH_ID,
+    CDP_TRANSACTION,
+    CDP_TIMESTAMP_FULL,
+    CDP_TIMESTAMP_INC,
+    CDP_TIMESTAMP_O9
+FROM FINAL
+ORDER BY IDX ASC

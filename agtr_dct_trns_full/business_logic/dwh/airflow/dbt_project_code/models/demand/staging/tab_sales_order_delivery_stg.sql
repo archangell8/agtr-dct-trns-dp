@@ -1,0 +1,570 @@
+-- noqa: disable=all
+{{
+    config(
+        materialized='table'
+    )
+}}
+
+WITH
+NEW_TRADES_VENDAS_TEMP AS (
+    SELECT
+        NR_DOCO,
+        PEDIDO,
+        DESTINACAO,
+        ABS(SUM(VOLUME_KG)) AS VOLUME_KG
+    FROM {{ source('pscfl', 'F_MIN_NEW_TRADES_VENDAS') }}
+    GROUP BY
+        NR_DOCO,
+        PEDIDO,
+        DESTINACAO
+),
+
+NEW_TRADES_VENDAS AS (
+    SELECT
+        COALESCE(NULLIF(NR_DOCO::INT::STRING, ''), 'N/A') AS NR_DOCO,
+        COALESCE(NULLIF(PEDIDO, ''), 'N/A') AS PEDIDO,
+        COALESCE(NULLIF(DESTINACAO, ''), 'N/A') AS DESTINACAO
+    FROM NEW_TRADES_VENDAS_TEMP
+    QUALIFY RANK() OVER(
+        PARTITION BY NR_DOCO, PEDIDO
+        ORDER BY VOLUME_KG DESC
+    ) = 1
+),
+
+TEMP_DELIVEREDSALESORDERQUANTITY AS (
+    SELECT
+        SDKCOO,
+        SDDOCO,
+        SDDCTO,
+        SUM(SDSOQS::BIGINT / 1000) AS QTD_EXECUTADO
+    FROM {{ source('jde', 'F4211') }}
+    WHERE
+        1 = 1
+        AND SDLTTR IN ('521', '598', '605', '617', '620', '630')
+        AND SDNXTR IN ('617', '620', '999') --560 nao foi faturado ainda
+        AND SDLNTY NOT IN ('BX', 'CP')
+    GROUP BY
+        SDKCOO,
+        SDDOCO,
+        SDDCTO
+),
+
+TEMP_COMMITTEDSALESORDERQUANTITY_1 AS (
+    SELECT
+        SDKCOO,
+        SDDOCO,
+        SDDCTO,
+        SUM(SDSOQS::BIGINT / 1000) AS PEDIDO_EXECUTADO
+    FROM {{ source('jde', 'F4211') }}
+    WHERE
+        1 = 1
+        AND SDLTTR IN ('521', '598', '605', '617', '620', '630')
+        AND SDNXTR IN ('560', '617', '620', '999')
+        AND SDLNTY NOT IN ('BX', 'CP')
+    GROUP BY
+        SDKCOO,
+        SDDOCO,
+        SDDCTO
+),
+
+TEMP_COMMITTEDSALESORDERQUANTITY_2 AS (
+    SELECT
+        SDKCOO,
+        SDDOCO,
+        SDDCTO,
+        SUM(SDSOQS::BIGINT / 1000) AS SALDO_DO_PEDIDO
+    FROM {{ source('jde', 'F4211') }}
+    WHERE
+        1 = 1
+        AND SDLTTR IN ('520', '914')
+        AND SDNXTR IN ('521', '530')
+        AND SDLNTY NOT IN ('BX', 'CP')
+    GROUP BY
+        SDKCOO,
+        SDDOCO,
+        SDDCTO
+),
+
+TEMP_BLOCKEDQUANTITY_C1 AS (
+    SELECT
+        T1.SHKCOO,
+        T1.SHDOCO,
+        T1.SHDCTO,
+        T1.SHMCU,
+        SUM(T2.SDSOQS::INTEGER / 1000) AS C1
+    FROM {{ source('jde', 'F4201') }} AS T1
+    INNER JOIN {{ source('jde', 'F4211') }} AS T2
+        ON
+            T1.SHKCOO = T2.SDKCOO
+            AND T1.SHMCU = T2.SDEMCU
+            AND T1.SHDOCO = T2.SDDOCO
+            AND T1.SHDCTO = T2.SDDCTO
+    WHERE
+        TRIM(T1.SHHOLD) != ''
+        AND T2.SDLTTR IN ('520', '914')
+        AND T2.SDNXTR IN ('521')
+        AND {{ filter_remove_jde_delete_data('T1') }}
+        AND {{ filter_remove_jde_delete_data('T2') }}
+    GROUP BY
+        T1.SHKCOO,
+        T1.SHDOCO,
+        T1.SHDCTO,
+        T1.SHMCU
+),
+
+TEMP_BLOCKEDQUANTITY_C2 AS (
+    SELECT
+        HD2.SDEMCU,
+        HD2.SDKCOO,
+        HD2.SDDOCO,
+        HD2.SDDCTO,
+        SUM(HD2.SDSOQS::INTEGER / 1000) AS C2
+    FROM {{ source('jde', 'F4211') }} AS HD2
+    WHERE
+        HD2.SDLTTR IN ('520', '914')
+        AND HD2.SDNXTR IN ('521')
+        AND HD2.SDLNTY NOT IN ('BX', 'CP')
+        AND TRIM(HD2.SDDTYS) != ''
+        AND {{ filter_remove_jde_delete_data('HD2') }}
+    GROUP BY
+        HD2.SDEMCU,
+        HD2.SDKCOO,
+        HD2.SDDOCO,
+        HD2.SDDCTO
+),
+
+UDC_DCT AS (
+    SELECT
+        CATEGORY,
+        STAGE,
+        SOURCE_CODE,
+        TARGET_CODE
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }}
+    WHERE
+        1 = 1
+        AND TRIM(STATUS) = 'ATIVO'
+),
+
+F5549400_CTE AS (
+    SELECT
+        VHEV01,
+        VHKCOO,
+        VHDOC,
+        VHDCT
+    FROM {{ source('jde', 'F5549400') }}
+    WHERE
+        1 = 1
+        AND VHDCTO = 'TN'
+    QUALIFY RANK() OVER (
+        PARTITION BY VHKCOO, VHDOC, VHDCT
+        ORDER BY VHUK01 ASC, VHDOCO DESC
+    ) = 1
+),
+
+CARTEIRA_PEDIDOS AS (
+    SELECT
+        TEMP_COMMITTEDSALESORDERQUANTITY_1.PEDIDO_EXECUTADO,
+        TEMP_COMMITTEDSALESORDERQUANTITY_2.SALDO_DO_PEDIDO,
+        HD2.C2,
+        T1.C1,
+        TEMP_DELIVEREDSALESORDERQUANTITY.QTD_EXECUTADO,
+        F01D.OEAN8 AS PICKUP_LOCATION,
+        CONCAT(
+            TRIM(F4211.SDDOCO), TRIM(F4211.SDDCTO), TRIM(F4211.SDMCU)
+        ) AS DEMANDID,
+        -- CÓDIGO LONGO DO SKU NO JDE E1, SIMILAR AO CÓDIGO DE ITEM CONTIDO NA
+        -- ENTIDADE O9 ITEMMASTER
+        TRIM(F4211.SDLITM) AS ITEM,
+        -- CORRESPONDE AO CÓDIGO LOCATIONID NA ENTIDADE LOCATION
+        NULLIF(TRIM(F4211.SDMCU), '') AS "LOCATION",
+        -- NÚMERO DO ADDRESS NUMBER DO CLIENTE RESPECTIVO A VENDA, NESTE CASO
+        --PODE SER O CLIENTE PAI CASO TRATAR-SE DE UM CKLIENTE COM FILIAIS
+        F4211.SDAN8 AS CUSTOMERID,
+        -- NÚMERO DO ADDRESS NUMBER DO CLIENTE RESPECTIVO A ENTREGA, NESTE CASO
+        -- É O CÓDIGO DO CLIENTE CITADO NA NFE DE ENTREGA DO PRODUTO
+        -- F4211.SDSHAN AS SHIPTO,
+        TRIM(F4211.SDDCTO) AS ORDER_TYPE,
+        CASE
+            WHEN
+                TRIM(F4211.SDDCTO) IN ('SI')
+                THEN COALESCE(LOC2.LOCATION_UNIT_ID, F4211.SDSHAN)
+            WHEN
+                TRIM(UDC.TARGET_CODE) IN ('TRF', 'EXP')
+                AND NOT (UDC.SOURCE_CODE = 'SQ' AND ITM.L3 = 'INBOUND')
+                THEN COALESCE(LOC2.LOCATION_UNIT_ID, F4211.SDSHAN)
+            ELSE
+                F4211.SDSHAN
+        END AS SHIPTO,
+        F4211.SDSHAN AS CMM_SHIPTO_ADDRESS,
+        -- DATA DA ULTIMA MODIFICAÇÃO DO PEDIDO PERANTE O SISTEMA ERP
+        -- (BUSCAR ULTIMA DATA DE ATUALIZAÇÃO DO PEDIDO)
+        {{ julian_date_to_gregorian('F4211', 'SDUPMJ') }} AS LASTCHANGEDDATEOFSALESORDER,
+        -- CAMPO DE QUANTIDADE ENTREGUE DO PEDIDO, ESTE CAMPO É APRESENTADO EM
+        -- VOLUME DO SKU , NECESSÁRIO TRANSFORMAR NO MINERVA
+        TRIM(F4211.SDFRTH) AS FREIGHTTYPE,
+        (COALESCE(T1.C1, 0) + COALESCE(HD2.C2, 0)) AS BLOCKEDQUANTITY,
+        COALESCE(
+            TEMP_DELIVEREDSALESORDERQUANTITY.QTD_EXECUTADO, 0
+        ) AS DELIVEREDSALESORDERQUANTITY,
+        -- QUANTIDADE TOTAL DO PEDIDO NA BASE DE DADOS JDE E1
+        (
+            COALESCE(TEMP_COMMITTEDSALESORDERQUANTITY_1.PEDIDO_EXECUTADO, 0)
+                +
+            COALESCE(TEMP_COMMITTEDSALESORDERQUANTITY_2.SALDO_DO_PEDIDO, 0)
+        ) AS COMMITTEDSALESORDERQUANTITY,
+        -- DATA DE CRIAÇÃO DO PEDIDO NO JDE E1, OU NO CASO DE PEDIDOS MIGRADOS DO
+        -- SALES FORCE É DATA DE CRIAÇÃO QUE O PEDIDO FEZ INTERFACE COM JDE E1
+        {{ julian_date_to_gregorian('F4211', 'SDTRDJ') }} AS CREATIONDATEOFSALESORDERDOCUMENT,
+        -- O9 PEDE DATA DE ENTREGA REALIZADA NO CLIENTE, PORÉM NA VISÃO DE PEDIDOS
+        -- PODEMOS FORNECER A DATA DE ENTREGA PROGRAMADA PELO COMERCIAL
+        {{ julian_date_to_gregorian('F4211', 'SDRSDJ') }} AS SALESORDERDELIVERYDATE,
+        -- DATA PREVISÃO DO EMBARQUE DO PEDIDO NA PLANTA PARA ENTREGAR AO CLIENTE
+        {{ julian_date_to_gregorian('F4211', 'SDPDDJ') }} AS SALESORDERCOMMITDATE,
+        -- UNIDADE DO MATERIAL
+        -- (SETADO HARD CODE COMO TONELADA = TN CONFORME ALINHAMENTO O9)
+        F4211.SDUOM AS UOM,
+        -- NÚMERO DO PEDIDO ORIGINADO NO SALESFORCE
+        F4211.SDRORN AS ORDERSALESFORCE,
+        -- CAMPO LTA NÃO CONTÉM NO JDE E1, ESTE CAMPO É ESPECÍFICO NO SALESFORCE
+        -- PARA DETERMINAR SE UM PEDIDO É CONTRATO
+        '' AS LTA,
+        CASE
+            WHEN
+                T1.C1 > 0 AND COALESCE(HD2.C2, 0) = 0
+                    THEN 'C1'
+            WHEN
+                HD2.C2 > 0 AND COALESCE(T1.C1, 0) = 0
+                    THEN 'C2'
+            WHEN
+                T1.C1 > 0 AND HD2.C2 > 0
+                    THEN 'C1/C2'
+            ELSE
+                'N/A'
+        END AS BLOCKINGTYPE,
+        CASE
+            WHEN TRIM(T4.VHEV01) = 'F'
+                THEN 'FER'
+            ELSE LOC.LOCATION_CODE
+        END AS TRANSMODE,
+        CASE
+            WHEN (UDC.SOURCE_CODE = 'SQ' AND ITM.L3 = 'INBOUND')
+                THEN 'VEN'
+            WHEN (UDC.SOURCE_CODE = 'SX' AND ITM.L3 = 'OUTBOUND')
+                THEN 'EXP'
+            ELSE
+                TRIM(UDC.TARGET_CODE)
+        END AS OPERATIONTYPE,
+        T3.PDMCU AS BP_DESTINO
+    -- SALES ORDER HEADER
+    FROM {{ source('jde', 'F4201') }} AS F4201
+    -- SALES ORDER DETAIL
+    INNER JOIN {{ source('jde', 'F4211') }} AS F4211
+        ON
+            F4201.SHKCOO = F4211.SDKCOO
+            AND F4201.SHDCTO = F4211.SDDCTO
+            AND F4201.SHDOCO = F4211.SDDOCO
+    -- ADDRESS BOOK MASTER
+    LEFT JOIN {{ source('jde', 'F0101') }} AS F0101
+        ON F4211.SDAN8 = F0101.ABAN8
+    -- ADDRESS BY BRANCHPLANT
+    LEFT JOIN {{ source('jde', 'F0116') }} AS F0116
+        ON
+            F0101.ABAN8 = F0116.ALAN8
+            AND F0101.ABEFTB = F0116.ALEFTB
+    -- ITEM MASTER / INVENTORY MANAGEMENT
+    LEFT JOIN {{ source('jde', 'F4101') }} AS F4101
+        ON
+            F4211.SDITM = F4101.IMITM
+            AND TRIM(F4101.IMSRP7) NOT IN ('COP', 'INA')
+    LEFT JOIN {{ source('jde', 'F0101') }} AS F0101_2
+        ON F4211.SDPA8 = F0101_2.ABAN8
+    -- CONTRACT
+    LEFT JOIN {{ source('jde', 'F5562001') }} AS F5562001
+        ON
+            F4211.SDDMCT = F5562001.QLDMCT
+            AND F4211.SDKCOO = F5562001.QLKCOO
+    -- SHIPMENT ROUTING STEPS
+    LEFT JOIN {{ source('jde', 'F4941') }} AS F4941
+        ON F4211.SDSHPN = F4941.RSSHPN
+    LEFT JOIN TEMP_DELIVEREDSALESORDERQUANTITY
+        ON
+            F4201.SHKCOO = TEMP_DELIVEREDSALESORDERQUANTITY.SDKCOO
+            AND F4201.SHDOCO = TEMP_DELIVEREDSALESORDERQUANTITY.SDDOCO
+            AND F4201.SHDCTO = TEMP_DELIVEREDSALESORDERQUANTITY.SDDCTO
+    LEFT JOIN TEMP_COMMITTEDSALESORDERQUANTITY_1
+        ON
+            F4201.SHKCOO = TEMP_COMMITTEDSALESORDERQUANTITY_1.SDKCOO
+            AND F4201.SHDOCO = TEMP_COMMITTEDSALESORDERQUANTITY_1.SDDOCO
+            AND F4201.SHDCTO = TEMP_COMMITTEDSALESORDERQUANTITY_1.SDDCTO
+    LEFT JOIN TEMP_COMMITTEDSALESORDERQUANTITY_2
+        ON
+            F4201.SHKCOO = TEMP_COMMITTEDSALESORDERQUANTITY_2.SDKCOO
+            AND F4201.SHDOCO = TEMP_COMMITTEDSALESORDERQUANTITY_2.SDDOCO
+            AND F4201.SHDCTO = TEMP_COMMITTEDSALESORDERQUANTITY_2.SDDCTO
+    LEFT JOIN TEMP_BLOCKEDQUANTITY_C1 AS T1
+        ON
+            TRIM(F4201.SHMCU) = TRIM(T1.SHMCU)
+            AND F4201.SHKCOO = T1.SHKCOO
+            AND F4201.SHDOCO = T1.SHDOCO
+            AND F4201.SHDCTO = T1.SHDCTO
+    LEFT JOIN TEMP_BLOCKEDQUANTITY_C2 AS HD2
+        ON
+            F4201.SHMCU = HD2.SDEMCU
+            AND F4201.SHKCOO = HD2.SDKCOO
+            AND F4201.SHDOCO = HD2.SDDOCO
+            AND F4201.SHDCTO = HD2.SDDCTO
+    LEFT JOIN {{ source('jde', 'F4311') }} AS T3
+        ON
+            F4211.SDRKCO = T3.PDKCOO
+            AND F4211.SDKCOO = T3.PDRKCO
+            AND LPAD(TRIM(F4211.SDDOCO), 8, 0) = T3.PDRORN
+            AND F4211.SDDCTO = T3.PDRCTO
+            --AND T3.PDLNID IN ('10000', '1000')
+            AND T3.PDLNID IN (
+                SELECT MIN(T3_INT.PDLNID::NUMBER)
+                FROM {{ source('jde', 'F4311') }} AS T3_INT
+                WHERE
+                    1 = 1
+                    AND T3_INT.PDKCOO = T3.PDKCOO
+                    AND T3_INT.PDDOCO = T3.PDDOCO
+                    AND T3_INT.PDDCTO = T3.PDDCTO
+                    AND T3_INT.PDRKCO = T3.PDRKCO
+            )
+
+    LEFT JOIN {{ ref('tab_location_internal_stg') }} AS LOC
+        ON
+            TRIM(T3.PDMCU) = LOC.LOCATIONID
+            AND LOC.LOCATION_UNIT_STRUCTURE = 'TRANSBORDO'
+    LEFT JOIN {{ ref('tab_location_internal_stg') }} AS LOC2
+        ON
+            TRIM(T3.PDMCU) = LOC2.LOCATIONID
+            AND LOC2.LOCATION_UNIT_STRUCTURE = 'FÁBRICA'
+    LEFT JOIN UDC_DCT AS UDC
+        ON
+            TRIM(UDC.SOURCE_CODE) = TRIM(F4201.SHDCTO)
+            AND TRIM(UDC.CATEGORY) = 'SALES_ORDER_DELIVERY'
+            AND TRIM(UDC.STAGE) = 'ORDERS'
+    LEFT JOIN {{ ref('item_master') }} AS ITM
+        ON TRIM(F4211.SDLITM) = ITM.ITEM
+    LEFT JOIN F5549400_CTE AS T4
+        ON
+            F4211.SDKCOO = T4.VHKCOO
+            AND F4211.SDDOCO = T4.VHDOC
+            AND F4211.SDDCTO = T4.VHDCT
+    LEFT JOIN {{ source('jde', 'F554201D') }} AS F01D
+        ON
+            F01D.OEKCOO = F4211.SDKCOO
+            AND F01D.OEDOCO = F4211.SDDOCO
+            AND F01D.OEDCTO = F4211.SDDCTO
+            AND F01D.OEKCOO = F4211.SDKCOO
+    WHERE
+        1 = 1
+        AND F4211.SDDOCO != 0
+        AND F4211.SDLNTY NOT IN ('BX', 'CP')
+        AND (
+            F4211.SDLTTR != '980'
+            OR F4211.SDNXTR IN ('521', '528', '530', '560', '999')
+        )
+        -- TIPOS DE PEDIDO DE VENDA
+        AND F4211.SDDCTO IN (
+            SELECT U.SOURCE_CODE
+            FROM UDC_DCT AS U
+            WHERE
+                TRIM(U.CATEGORY) = 'SALES_ORDER_DELIVERY'
+                AND TRIM(U.STAGE) = 'ORDERS'
+        )
+        -- NÚMEROS DE CIA CONTABIL - ORDER COMPANY (ORDER NUMBER)
+        AND F4211.SDKCOO IN ('52171', '52180') --'52191'
+        AND (
+            F4211.SDTRDJ >= 125001
+            OR
+            F4211.SDDRQJ >= 125001
+            OR
+            F4211.SDADDJ >= 125001
+        )
+        AND F4211.SDLNID = (
+            SELECT MAX(F4211_1.SDLNID)
+            FROM {{ source('jde', 'F4211') }} AS F4211_1
+            WHERE
+                1 = 1
+                AND F4211_1.SDDOCO = F4211.SDDOCO
+                AND F4211_1.SDDCTO = F4211.SDDCTO
+                AND F4211_1.SDKCOO = F4211.SDKCOO
+                AND F4211_1.SDLNTY NOT IN ('BX', 'CP')
+                AND (
+                    F4211_1.SDLTTR != '980'
+                    OR F4211_1.SDNXTR IN ('521', '528', '530', '560', '999')
+                )
+                AND (
+                    F4211_1.SDTRDJ >= 125001
+                    OR
+                    F4211_1.SDDRQJ >= 125001
+                    OR
+                    F4211_1.SDADDJ >= 125001
+                )
+                AND {{ filter_remove_jde_delete_data('F4211_1') }}
+        )
+        AND {{ filter_remove_jde_delete_data('F4201') }}
+        AND {{ filter_remove_jde_delete_data('F4211') }}
+),
+
+MAIN AS (
+    SELECT
+        CAR.DEMANDID,
+        CAR.ITEM,
+        CAR.LOCATION,
+        CAR.CUSTOMERID,
+        CAR.LASTCHANGEDDATEOFSALESORDER,
+        CAR.FREIGHTTYPE,
+        CAR.BLOCKEDQUANTITY,
+        CAR.DELIVEREDSALESORDERQUANTITY,
+        CAR.COMMITTEDSALESORDERQUANTITY,
+        CAR.CREATIONDATEOFSALESORDERDOCUMENT,
+        CAR.SALESORDERDELIVERYDATE,
+        CAR.SALESORDERCOMMITDATE,
+        CAR.UOM,
+        CAR.ORDERSALESFORCE,
+        CAR.LTA,
+        CAR.BLOCKINGTYPE,
+        CAR.OPERATIONTYPE,
+        --CAR.SHIPTO,
+        CAR.CMM_SHIPTO_ADDRESS,
+        CAR.PICKUP_LOCATION,
+        CASE
+            WHEN CAR.OPERATIONTYPE = 'VEN' AND CAR.ORDER_TYPE = 'SQ'
+                THEN CAR.SHIPTO
+            ELSE
+                COALESCE(
+                    LOC.LOCATION_UNIT_ID,
+                    LOC2.LOCATION_UNIT_ID,
+                    CAR.SHIPTO
+                )
+        END AS SHIPTO,
+        COALESCE(CAR.TRANSMODE, 'ROD') AS TRANSMODE,
+        (CAR.COMMITTEDSALESORDERQUANTITY - CAR.DELIVEREDSALESORDERQUANTITY)
+            AS AVAILABLEQUANTITY,
+        CASE
+            WHEN
+                CAR.BLOCKEDQUANTITY > 0
+                THEN 'BLOQUEADO'
+            WHEN
+                (
+                    CAR.COMMITTEDSALESORDERQUANTITY
+                    - CAR.DELIVEREDSALESORDERQUANTITY
+                ) = 0
+                THEN 'FINALIZADO'
+            ELSE
+                'LIBERADO'
+        END AS STATUS
+    FROM CARTEIRA_PEDIDOS AS CAR
+    LEFT JOIN UDC_DCT AS UDC_SHIPTO
+        ON
+            TRIM(UDC_SHIPTO.CATEGORY) = 'SHIPMENT'
+            AND TRIM(UDC_SHIPTO.STAGE) = 'SHIPTO'
+            AND CAR.SHIPTO = UDC_SHIPTO.SOURCE_CODE
+    LEFT JOIN {{ ref('tab_location_internal_stg') }} AS LOC
+        ON TRIM(UDC_SHIPTO.TARGET_CODE) = LOC.LOCATIONID
+    LEFT JOIN {{ ref('tab_location_internal_stg') }} AS LOC2
+        ON TRIM(CAR.BP_DESTINO) = LOC2.LOCATIONID
+),
+
+SALES_ORDER_DELIVERY AS (
+    SELECT DISTINCT
+        COALESCE(NULLIF(SOD.DEMANDID, ''), 'N/A') AS DEMANDID,
+        COALESCE(NULLIF(SOD.ITEM, ''), 'N/A') AS ITEM,
+        COALESCE(NULLIF(D.LOCATION_UNIT_ID, ''), 'N/A') AS "LOCATION",
+        COALESCE(SOD.LOCATION, 'N/A') AS SOURCEBP,
+        COALESCE(NULLIF(SOD.CUSTOMERID, ''), 'N/A') AS CUSTOMERID,
+        COALESCE(NULLIF(SOD.SHIPTO, ''), 'N/A') AS SHIPTO,
+        COALESCE(NULLIF(
+            COALESCE(UDC_REF.TARGET_CODE, NT.DESTINACAO),
+            ''
+        ), 'N/A') AS REFERENCEPORT,
+        COALESCE(
+            SOD.DELIVEREDSALESORDERQUANTITY
+            / UOM.SUPPLYPLANNINGFINALCONVERSIONFACTOR,
+            0
+        )::DECIMAL(20, 3) AS DELIVEREDSALESORDERQUANTITY,
+        COALESCE(
+            SOD.COMMITTEDSALESORDERQUANTITY
+            / UOM.SUPPLYPLANNINGFINALCONVERSIONFACTOR,
+            0
+        )::DECIMAL(20, 3) AS COMMITTEDSALESORDERQUANTITY,
+        TRIM(
+            TO_CHAR(TO_DATE(SOD.CREATIONDATEOFSALESORDERDOCUMENT), 'DD-MM-YYYY')
+        ) AS CREATIONDATEOFSALESORDERDOCUMENT,
+        TRIM(
+            TO_CHAR(TO_DATE(SOD.LASTCHANGEDDATEOFSALESORDER), 'DD-MM-YYYY')
+        ) AS LASTCHANGEDDATEOFSALESORDER,
+        CASE
+            WHEN SOD.FREIGHTTYPE NOT IN ('CIF', 'FOB')
+                THEN 'FOB'
+            ELSE
+                COALESCE(NULLIF(SOD.FREIGHTTYPE, ''), 'FOB')
+        END AS FREIGHTTYPE,
+        COALESCE(NULLIF(
+            SOD.BLOCKEDQUANTITY
+            / UOM.SUPPLYPLANNINGFINALCONVERSIONFACTOR,
+            0
+        ), 0)::DECIMAL(20, 3) AS BLOCKEDQUANTITY,
+        TRIM(
+            TO_CHAR(TO_DATE(SOD.SALESORDERDELIVERYDATE), 'DD-MM-YYYY')
+        ) AS SALESORDERDELIVERYDATE,
+        TRIM(
+            TO_CHAR(TO_DATE(SOD.SALESORDERCOMMITDATE), 'DD-MM-YYYY')
+        ) AS SALESORDERCOMMITDATE,
+        TRIM(UOM.UOMFROM) AS UOM,
+        COALESCE(
+            NULLIF(TRIM(SOD.ORDERSALESFORCE), ''), 'N/A'
+        ) AS ORDERSALESFORCE,
+        COALESCE(UPPER(ACC.LTA::STRING), 'FALSE') AS LTA,
+        COALESCE(
+            SOD.AVAILABLEQUANTITY
+            / UOM.SUPPLYPLANNINGFINALCONVERSIONFACTOR, 0
+        )::DECIMAL(20, 3) AS AVAILABLEQUANTITY,
+        COALESCE(SOD.BLOCKINGTYPE, 'N/A') AS BLOCKINGTYPE,
+        COALESCE(SOD.STATUS, 'N/A') AS STATUS,
+        COALESCE(SOD.TRANSMODE, 'N/A') AS TRANSMODE,
+        COALESCE(SOD.OPERATIONTYPE, 'N/A') AS OPERATIONTYPE,
+        COALESCE(NULLIF(SOD.CMM_SHIPTO_ADDRESS, ''), 'N/A')
+            AS CMM_SHIPTO_ADDRESS,
+        COALESCE(NULLIF(SOD.PICKUP_LOCATION, 0)::STRING, 'N/A')
+            AS PICKUP_LOCATION
+    FROM MAIN AS SOD
+    LEFT JOIN NEW_TRADES_VENDAS AS NT
+        ON
+            NT.NR_DOCO = SUBSTR(SOD.DEMANDID, 1, LENGTH(SOD.DEMANDID) - 12)
+            AND RIGHT(NT.PEDIDO, 2) = SUBSTR(
+                SOD.DEMANDID, LENGTH(SOD.DEMANDID) - 11, 2
+            )
+    LEFT JOIN UDC_DCT AS UDC_REF
+        ON
+            UDC_REF.CATEGORY = 'SALES_ORDER_DELIVERY'
+            AND UDC_REF.STAGE = 'PORTREFERENCE'
+            AND NT.DESTINACAO = UDC_REF.SOURCE_CODE
+    LEFT JOIN {{ ref('tab_location_internal_stg') }} AS D ON SOD.LOCATION = D.LOCATIONID
+    LEFT JOIN {{ ref('uom_conversion_master') }} AS UOM
+        ON
+            TRIM(SOD.UOM) = TRIM(UOM.UOMTO)
+            AND TRIM(SOD.ITEM) = TRIM(UOM.ITEM)
+            AND TRIM(UOM.UOMFROM) = 'TN'
+    LEFT JOIN {{ source('salesforce', 'ACCOUNT') }} AS ACC
+        ON TRIM(ACC.ORDERNUMBER) = TRIM(SOD.ORDERSALESFORCE)
+    INNER JOIN {{ ref('item_master') }} AS ITM
+        ON SOD.ITEM = ITM.ITEM
+    WHERE
+        1 = 1
+        AND NOT (ITM.L3 = 'INBOUND' AND SOD.OPERATIONTYPE = 'EXP')
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM SALES_ORDER_DELIVERY
+WHERE
+    1 = 1
+    AND COMMITTEDSALESORDERQUANTITY != 0
+    AND {{ date_max_filter('CREATIONDATEOFSALESORDERDOCUMENT','DD-MM-YYYY', 'na') }} --noqa
+    AND {{ date_max_filter('LASTCHANGEDDATEOFSALESORDER','DD-MM-YYYY', 'na') }} --noqa
+    AND {{ date_max_filter('SALESORDERDELIVERYDATE','DD-MM-YYYY', 'na') }} --noqa
+    AND {{ date_max_filter('SALESORDERCOMMITDATE','DD-MM-YYYY', 'na') }} --noqa

@@ -1,0 +1,139 @@
+-- noqa: disable=ST09
+{{
+    config(
+        materialized='table'
+    )
+}}
+
+WITH
+SOURCE_ADDRESS AS (
+    SELECT -- PESQUISA ADDRESS PONTO DE COLETA
+        L.LOCATIONID AS SOURCE,
+        L.CNPJ
+    FROM {{ ref('tab_location_internal_stg') }} AS L
+    WHERE
+        1 = 1
+        AND L.LOCATION_UNIT_STRUCTURE = 'PONTO DE COLETA'
+),
+
+DESTINATION_ADDRESS_BP AS (
+    -- PESQUISA ADDRESS DA BP DESTINO
+    SELECT
+        L.ADDRESS_NUMBER AS ABAN8,
+        L.CNPJ AS ABTAX,
+        CONCAT('  ', L.LOCATIONID) AS BP_DESTINO
+    FROM {{ ref('tab_location_internal_stg') }} AS L
+    WHERE
+        1 = 1
+        AND (
+            L.LOCATIONID LIKE '02171%'
+            OR L.LOCATIONID LIKE '02191%'
+            OR L.LOCATIONID LIKE '02180%'
+        )
+),
+
+INVOICE AS (
+    SELECT DISTINCT
+        SOURCE_CNPJ,
+        DESTINATION_CNPJ
+    FROM {{ ref('tab_shipment_neogrid_stg') }}
+    WHERE
+        SOURCE_CNPJ IS NOT NULL
+        AND DESTINATION_CNPJ IS NOT NULL
+),
+
+ADDRESS_BP_DESTINO AS (
+    SELECT
+        J.CNPJ AS SOURCE_CNPJ,
+        M.ABTAX AS DESTINATION_CNPJ,
+        J.SOURCE,
+        M.BP_DESTINO
+    FROM INVOICE AS G
+    INNER JOIN SOURCE_ADDRESS AS J
+        ON SUBSTR(LPAD(G.SOURCE_CNPJ, 14, '0'), 1, 8) = SUBSTR(LPAD(J.CNPJ, 14, '0'), 1, 8) -- noqa
+    INNER JOIN DESTINATION_ADDRESS_BP AS M
+        ON SUBSTR(LPAD(G.DESTINATION_CNPJ, 14, '0'), 1, 8) = SUBSTR(LPAD(M.ABTAX, 14, '0'), 1, 8) -- noqa
+),
+
+VALID_CONTRACTS AS (
+    SELECT
+        SC.CONTRACTNUMBER_INTERNAL AS CONTRACTNUMBER,
+        COALESCE(SUM(SD.TORECEIVETOTAL), 0) AS TORECEIVETOTAL
+    FROM {{ ref('tab_sourcing_contract_stg') }} AS SC
+    INNER JOIN {{ ref('tab_sourcing_contract_details_stg') }} AS SD
+        ON SD.SOURCINGCONTRACTID = SC.ID
+    GROUP BY 1
+    HAVING COALESCE(SUM(SD.TORECEIVETOTAL), 0) > 0
+),
+
+PRIORIZACAO_CONTRATO AS (
+    SELECT DISTINCT -- noqa
+        G.CSAN8 AS SOURCE_ADDRESS,
+        G.CSMCU AS BP_DESTINATION,
+        G.CSDMCT AS CONTRACTNUMBER,
+        -- CONCAT(G.CSKCO, '-', G.CSDMCT) AS ID,
+        CTR.ID,
+        J.SOURCE_CNPJ,
+        J.DESTINATION_CNPJ,
+        X.HSZ55DTIE AS DELIVERY_START_DATE,
+        CTR.TRANSMODE,
+        IFF(CTR.FREIGHTTYPE = 'FBZ', 'CIF', CTR.FREIGHTTYPE) AS FREIGHTTYPE,
+        CASE
+            WHEN X.HSZ55TPCP = 'FXR' THEN 'A'
+            WHEN X.HSZ55TPCP = 'FXD' THEN 'B'
+            WHEN X.HSZ55TPCP IN ('NPE', 'COMP') THEN 'C'
+            ELSE 'Z'
+        END AS CONTRACT_TYPE
+    FROM {{ source('jde', 'F5543050') }} AS G
+    INNER JOIN {{ source('jde', 'F5543051') }} AS X
+        ON
+            G.CSKCO = X.HSKCO
+            AND G.CSZ55SLPN = X.HSZ55SLPN
+            AND G.CSZ55SLPT = X.HSZ55SLPT
+            AND G.CSZ55SLPS = X.HSZ55SLPS
+    INNER JOIN {{ source('jde', 'F38010') }} AS Y
+        ON
+            G.CSDMCT = Y.DNDMCT
+            AND TRIM(Y.DNDMSC) = 'A'
+    LEFT JOIN {{ source('jde', 'F5543064') }} AS F64
+        ON
+            G.CSKCO = F64.LRKCO
+            AND G.CSZ55SLPN = F64.LRZ55SLPN
+            AND G.CSZ55SLPT = F64.LRZ55SLPT
+    INNER JOIN ADDRESS_BP_DESTINO AS J
+        ON
+            COALESCE(F64.LRAN8, G.CSSHAN) = J.SOURCE
+            AND G.CSMCU = J.BP_DESTINO
+    INNER JOIN {{ ref('tab_sourcing_contract_internal_stg') }} AS CTR
+        ON TRIM(G.CSDMCT) = CTR.CONTRACTNUMBER
+    INNER JOIN VALID_CONTRACTS AS CC
+        ON CC.CONTRACTNUMBER = TRIM(G.CSDMCT)
+    WHERE
+        1 = 1
+        AND TRY_CAST(G.CSZ55SLPT AS BIGINT) = 12
+        AND G.CSKCO IN ('52171', '52191', '52180')
+        AND G.CSZ55SLPS = 'E' -- SLIP EFETIVADO
+        AND TRIM(Y.DNDMCT) != ''
+)
+
+SELECT
+    SOURCE_CNPJ,
+    DESTINATION_CNPJ,
+    CONTRACTNUMBER,
+    ID,
+    FREIGHTTYPE,
+    TRANSMODE,
+    ROW_NUMBER() OVER (
+        PARTITION BY SOURCE_CNPJ, DESTINATION_CNPJ
+        ORDER BY
+            CASE
+                WHEN CONTRACT_TYPE = 'A' THEN 1
+                WHEN CONTRACT_TYPE = 'B' THEN 2
+                WHEN CONTRACT_TYPE = 'C' THEN 3
+                ELSE 99
+            END,
+            DELIVERY_START_DATE, -- DATA_INICIO_ENTREGA
+            CONTRACTNUMBER -- PRIMEIRO SEQUENCIAL DE NRO DE CONTRATO
+    ) AS CONTRACT_PRIORITY
+FROM PRIORIZACAO_CONTRATO
+QUALIFY CONTRACT_PRIORITY = 1

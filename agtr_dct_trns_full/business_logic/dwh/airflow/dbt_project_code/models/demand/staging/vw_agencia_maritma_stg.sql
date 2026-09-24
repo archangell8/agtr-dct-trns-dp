@@ -1,0 +1,72 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH
+CTE_UDC_MAPPING AS (
+    SELECT
+        CATEGORY,
+        STAGE,
+        SOURCE_CODE,
+        TARGET_CODE,
+        TARGET_NUMBER
+    FROM {{ source('pscfl', 'F_MIN_DCT_UDC') }}
+    WHERE
+        1 = 1
+        AND STATUS = 'ATIVO'
+),
+
+AGENCIA AS (
+    SELECT -- noqa
+        LINEUP.JDE_LOCATION_ID AS "LOCATION",
+        IFF(
+            TRY_CAST(
+                REPLACE(LINEUP.QUANTITY, ',', '.') AS DECIMAL(30, 2)
+            ) IS NULL,
+            NULL,
+            REPLACE(LINEUP.QUANTITY, ',', '.')
+        ) AS QUANTITY,
+        TO_CHAR(LINEUP.ETA, 'DD-MM-YYYY') AS ESTIMATEDTIMEARRIVAL,
+        TO_CHAR(LINEUP.ETB, 'DD-MM-YYYY') AS ESTIMATEDTIMEBERTHING,
+        TO_CHAR(LINEUP.ETC, 'DD-MM-YYYY') AS ESTIMATEDTIMECOMPLETION,
+        TO_CHAR(LINEUP.ETC, 'DD-MM-YYYY') AS "DATE",
+        COALESCE(IT.TARGET_CODE, UPPER(LINEUP.ITEM)) AS ITEMID,
+        UPPER(LINEUP.NAME) AS "NAME",
+        UPPER(LINEUP.CHARTER) AS CHARTER,
+        UPPER(LINEUP.PORTO) AS PORTO,
+        CONCAT(
+            LINEUP.JDE_LOCATION_ID, '_', IT.TARGET_CODE, '_A',
+            ROW_NUMBER() OVER (ORDER BY LINEUP.DATAUPDATE)
+        ) AS VESSEL_ID,
+        TRIM(REPLACE(CONCAT(
+            LINEUP.JDE_LOCATION_ID, '_', TO_CHAR(LINEUP.ETB, 'DD-MM-YYYY'),
+            '_', UPPER(LINEUP.NAME)
+        ), '	')) AS AGENCY_MERGE
+    FROM {{ source('pscfl', 'F_MIN_LINEUP') }} AS LINEUP
+    LEFT JOIN CTE_UDC_MAPPING AS IT
+        ON
+            UPPER(LINEUP.ITEM) = UPPER(IT.SOURCE_CODE)
+            AND IT.CATEGORY = 'AGENCIA_MARITIMA_ITEM'
+            AND IT.STAGE = 'LINEUP'
+    WHERE
+        UPPER(LINEUP.ITEM) IN (
+            SELECT DISTINCT UDC.SOURCE_CODE FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'AGENCIA_MARITIMA_FILTROS'
+                AND UDC.STAGE = 'ITEM'
+        )
+        AND UPPER(LINEUP.JDE_LOCATION_ID) NOT IN (
+            SELECT DISTINCT UDC.SOURCE_CODE FROM CTE_UDC_MAPPING AS UDC
+            WHERE
+                UDC.CATEGORY = 'AGENCIA_MARITIMA_FILTROS'
+                AND UDC.STAGE = 'LOCATION_AGENCIA'
+        )
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM AGENCIA

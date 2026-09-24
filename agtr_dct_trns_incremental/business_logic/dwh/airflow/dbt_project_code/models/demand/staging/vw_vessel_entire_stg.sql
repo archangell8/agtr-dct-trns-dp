@@ -1,0 +1,121 @@
+-- noqa: disable=RF06
+{{
+    config(
+        materialized='view'
+    )
+}}
+
+WITH
+BASE_EMBARQUE AS (
+    SELECT
+        VESSEL_ID AS ID,
+        NOME_NAVIO AS "NAME",
+        ITEMID,
+        LAYCANMIN,
+        LAYCANMAX,
+        CHARTER,
+        LOCATION_NAME AS "LOCATION",
+        CONTRATO,
+        AGENCY_MERGE,
+        MAX(ESTIMATEDTIMEARRIVAL) AS ESTIMATEDTIMEARRIVAL,
+        MAX(ESTIMATEDTIMEBERTHING) AS ESTIMATEDTIMEBERTHING,
+        MAX(ESTIMATEDTIMECOMPLETION) AS ESTIMATEDTIMECOMPLETION,
+        SUM(VOLUME_TOTAL) AS VOLUME_,
+        ROW_NUMBER() OVER (
+            PARTITION BY CONTRATO ORDER BY MAX(ESTIMATEDTIMECOMPLETION) ASC
+        ) AS RNK
+    FROM {{ ref('vw_embarque_programaportos_stg') }}
+    GROUP BY
+        VESSEL_ID,
+        NOME_NAVIO,
+        ITEMID,
+        LAYCANMIN,
+        LAYCANMAX,
+        CHARTER,
+        LOCATION_NAME,
+        CONTRATO,
+        AGENCY_MERGE
+),
+
+EMBARQUE AS (
+    SELECT
+        ID,
+        NAME,
+        ITEMID,
+        ESTIMATEDTIMEARRIVAL,
+        ESTIMATEDTIMEBERTHING,
+        ESTIMATEDTIMECOMPLETION,
+        LAYCANMIN,
+        LAYCANMAX,
+        CHARTER,
+        LOCATION,
+        CONTRATO,
+        'P.PORTOS' AS ORIGEM,
+        AGENCY_MERGE,
+        CONCAT(CONTRATO, '|', RNK) AS MERGE_ID
+    FROM BASE_EMBARQUE
+),
+
+AGENCIA AS (
+    SELECT
+        LOCATION,
+        NAME,
+        ITEMID,
+        ESTIMATEDTIMEARRIVAL,
+        ESTIMATEDTIMEBERTHING,
+        ESTIMATEDTIMECOMPLETION,
+        CHARTER,
+        NULL AS LAYCANMIN,
+        NULL AS LAYCANMAX,
+        NULL AS CONTRATO,
+        NULL AS MERGE_ID,
+        'AGENCIA' AS ORIGEM,
+        TRIM(REPLACE(VESSEL_ID, '	')) AS ID
+    FROM {{ ref('vw_agencia_maritma_stg') }}
+    WHERE
+        AGENCY_MERGE NOT IN (
+            SELECT DISTINCT TRIM(EP.AGENCY_MERGE)
+            FROM {{ ref('vw_embarque_programaportos_stg') }} AS EP
+        )
+),
+
+VESSEL AS (
+    SELECT
+        ID,
+        LOCATION,
+        NAME,
+        ITEMID,
+        ESTIMATEDTIMEARRIVAL,
+        ESTIMATEDTIMEBERTHING,
+        ESTIMATEDTIMECOMPLETION,
+        CHARTER,
+        LAYCANMIN,
+        LAYCANMAX,
+        CONTRATO,
+        MERGE_ID,
+        ORIGEM
+    FROM EMBARQUE
+
+    UNION DISTINCT
+
+    SELECT
+        ID,
+        LOCATION,
+        NAME,
+        ITEMID,
+        ESTIMATEDTIMEARRIVAL,
+        ESTIMATEDTIMEBERTHING,
+        ESTIMATEDTIMECOMPLETION,
+        CHARTER,
+        LAYCANMIN,
+        LAYCANMAX,
+        CONTRATO,
+        MERGE_ID,
+        ORIGEM
+    FROM AGENCIA
+)
+
+SELECT
+    *,
+    HASH(*) AS HASH_ID
+FROM VESSEL
