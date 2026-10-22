@@ -61,7 +61,6 @@ SALES_ORDER AS (
     WHERE
         1 = 1
         AND SO.SALESORDERCOMMITDATE != ''
-        AND IT.L3 = 'INBOUND'
     GROUP BY
         SO.ITEM,
         SO.LOCATION,

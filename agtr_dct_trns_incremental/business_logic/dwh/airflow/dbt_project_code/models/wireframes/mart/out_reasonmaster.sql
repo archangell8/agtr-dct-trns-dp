@@ -12,6 +12,12 @@ REASON AS (
         TYPE_OF_COST,
         REASON
     FROM {{ ref('shipment_penalties_master') }}
+
+    UNION ALL
+
+    SELECT
+        'N/A' AS TYPE_OF_COST,
+        'ALL1' AS REASON
 )
 
 SELECT

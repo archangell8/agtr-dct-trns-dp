@@ -16,10 +16,13 @@
 %}
 
 {%
-    set another_columns = ['volume']
+    set another_columns = [
+        'volume'
+    ]
 %}
 
 {% set list_post_hooks = [
+    "{{ get_cdp_transaction_delete_rearch('out_shipment_loadtracking_details', ref('out_shipment_loadtracking_details'), " ~ keys ~ ", " ~ another_columns ~ ") }}",
     "{{ check_dbt_run_log('out_shipment_loadtracking_details') }}"
 ] %}
 

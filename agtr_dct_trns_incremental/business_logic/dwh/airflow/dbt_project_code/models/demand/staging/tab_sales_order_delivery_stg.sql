@@ -76,8 +76,14 @@ TEMP_COMMITTEDSALESORDERQUANTITY_2 AS (
     FROM {{ source('jde', 'F4211') }}
     WHERE
         1 = 1
-        AND SDLTTR IN ('520', '914')
-        AND SDNXTR IN ('521', '530')
+        AND (
+            (
+                SDLTTR IN ('520', '914')
+                AND SDNXTR IN ('521', '530')
+            )
+            -- 530: STATUS INTERMEDIARIO DO PEDIDO DE VENDA, AINDA NAO ENTREGUE
+            OR SDLTTR = '530'
+        )
         AND SDLNTY NOT IN ('BX', 'CP')
     GROUP BY
         SDKCOO,

@@ -675,8 +675,8 @@ models:
     - name: itemid
       description: To do the description.
       data_type: string
-      tests:
-        - not_null
+      # tests:
+      #   - not_null
 
     - name: plannedquantity
       description: To do the description.

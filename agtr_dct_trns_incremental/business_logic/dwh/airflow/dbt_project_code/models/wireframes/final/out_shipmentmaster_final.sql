@@ -46,7 +46,7 @@ FINAL AS (
         S.SHIPMENT_IBPASSET,
         S.OC_NUMBER,
         S.TN_ROTA,
-        S.OC_EMISSION_DATE,
+        S.OC_EMISSION_DATE,--#
         S.EXPECTED_COLLECTION_DATE,
         S.CHECKIN_DATE,
         S.PRODUCER_NF_DATE,

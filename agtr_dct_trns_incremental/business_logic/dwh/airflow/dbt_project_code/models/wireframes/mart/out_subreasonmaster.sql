@@ -10,6 +10,10 @@ WITH
 SUBREASON AS (
     SELECT DISTINCT SUB_REASON AS SUBREASON
     FROM {{ ref('shipment_penalties_master') }}
+
+    UNION ALL
+
+    SELECT 'N/A' AS SUBREASON
 )
 
 SELECT

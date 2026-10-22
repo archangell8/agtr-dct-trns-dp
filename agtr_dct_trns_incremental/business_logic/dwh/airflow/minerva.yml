@@ -1395,6 +1395,8 @@ transformation:
         - "out_onhandsplants_final"
         - "out_resourcemaster"
         - "out_resourcemaster_final"
+        - "out_typemaster"
+        - "out_typemaster_final"
       models:
         - name: out_shipmentstatustracking_pace_final
         - name: out_sourcingcontractdetails_final
@@ -1437,6 +1439,7 @@ transformation:
         - name: out_shipment_loadtracking_details_final
         - name: out_onhandsplants_final
         - name: out_resourcemaster_final
+        - name: out_typemaster_final
       scheduler:
         type: airflow
         platform: astro
@@ -2747,6 +2750,7 @@ transformation:
         - "+out_shipment_loadtracking_details_final"
         - "+out_onhandsplants_final"
         - "+out_resourcemaster_final"
+        - "+out_typemaster_final"
       models:
         - name: out_shipmentstatustracking_pace_final
         - name: out_sourcingcontractdetails_final
@@ -2789,6 +2793,7 @@ transformation:
         - name: out_shipment_loadtracking_details_final
         - name: out_onhandsplants_final
         - name: out_resourcemaster_final
+        - name: out_typemaster_final
       scheduler:
         type: airflow
         platform: astro

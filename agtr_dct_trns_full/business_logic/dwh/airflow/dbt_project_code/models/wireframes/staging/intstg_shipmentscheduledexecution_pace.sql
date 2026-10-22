@@ -174,7 +174,7 @@ EXECUTED_TEMP AS (
         CASE
             WHEN LD.LOCATION_UNIT_STRUCTURE IN ('PORTO FLUVIAL', 'TRANSBORDO')
                 THEN LD.LOCATION_CODE
-            ELSE 'N/A'
+            ELSE 'ROD'
         END AS TRANSMODE,
         IFF(
             SC.ID IS NOT NULL,
